@@ -9,3 +9,4 @@ mvnw.cmd
 README.md
 Dockerfile
 .dockerignore
+.env

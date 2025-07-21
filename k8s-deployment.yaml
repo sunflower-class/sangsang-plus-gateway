@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sangsang-plus-gateway
+  labels:
+    app: sangsang-plus-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sangsang-plus-gateway
+  template:
+    metadata:
+      labels:
+        app: sangsang-plus-gateway
+    spec:
+      containers:
+      - name: gateway
+        image: buildingbite/sangsangplus-gateway:latest
+        ports:
+        - containerPort: 8080
+        env:
+        # Kafka 설정
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: "kafka:9092"
+        
+        # User 서비스 URL
+        - name: USER_SERVICE_URL
+          value: "http://user-service.user-service.svc.cluster.local"
+        
+        # JWT Secret (반드시 변경하세요!)
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: gateway-secrets
+              key: jwt-secret
+        
+        # Google OAuth 설정 (선택사항)
+        - name: GOOGLE_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: gateway-secrets
+              key: google-client-id
+              optional: true
+        
+        - name: GOOGLE_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: gateway-secrets
+              key: google-client-secret
+              optional: true
+        
+        # 추가 환경변수 (필요시)
+        # - name: SPRING_PROFILES_ACTIVE
+        #   value: "production"
+        
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sangsang-plus-gateway
+  annotations:
+    # Azure에서 고정 IP 사용을 위한 설정
+    service.beta.kubernetes.io/azure-load-balancer-resource-group: "test"
+    service.beta.kubernetes.io/azure-pip-name: "testip"
+spec:
+  selector:
+    app: sangsang-plus-gateway
+  ports:
+    - protocol: TCP
+      port: 80          # 외부에서 접근할 포트
+      targetPort: 8080  # 컨테이너 내부 포트
+  type: LoadBalancer
+  # Azure 고정 IP는 annotation으로 지정됨 (testip 사용)
+---
+# Secret 생성은 별도 명령어로 처리 (민감정보 보안)
+# kubectl create secret generic gateway-secrets \
+#   --from-literal=jwt-secret='your-jwt-secret' \
+#   --from-literal=google-client-id='your-google-client-id' \
+#   --from-literal=google-client-secret='your-google-client-secret'

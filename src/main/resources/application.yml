@@ -4,6 +4,25 @@ server:
 spring:
   application:
     name: gateway-service
+
+  cloud:
+    gateway:
+      routes:
+        - id: user-service
+          uri: ${USER_SERVICE_URL:http://user-service}
+          predicates:
+            - Path=/api/users/**
+  
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+    consumer:
+      group-id: gateway-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
   
   security:
     oauth2:
@@ -25,7 +44,8 @@ jwt:
 
 # Service URLs
 user-service:
-  url: http://localhost:8082
+  url: ${USER_SERVICE_URL:http://user-service}
+
 
 logging:
   level:

@@ -2,3 +2,11 @@ target/
 *.log
 cookies.txt
 *_cookies.txt
+
+# Environment files with real secrets
+.env.local
+.env.production
+
+# Kubernetes manifests with real secrets  
+*-secrets.yaml
+k8s-deployment-with-secrets.yaml
