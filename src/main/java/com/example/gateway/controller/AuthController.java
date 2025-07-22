@@ -26,13 +26,6 @@ import java.util.Map;
 @Tag(name = "Gateway API", description = "Authentication and Health endpoints")
 public class AuthController {
     
-    @GetMapping("/health")
-    @Operation(summary = "Health Check", description = "Check Gateway service health status")
-    @ApiResponse(responseCode = "200", description = "Service is healthy")
-    public ResponseEntity<Map<String, String>> health() {
-        return ResponseEntity.ok(Map.of("status", "OK", "service", "Gateway Service"));
-    }
-    
     @Autowired
     private AuthService authService;
     
