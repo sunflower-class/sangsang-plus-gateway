@@ -193,4 +193,16 @@ public class AuthController {
         response.addHeader(HttpHeaders.SET_COOKIE, accessCookie.toString());
         response.addHeader(HttpHeaders.SET_COOKIE, refreshCookie.toString());
     }
+    
+    @GetMapping("/health")
+    @Operation(summary = "Health Check", description = "Check if the gateway service is running")
+    @ApiResponse(responseCode = "200", description = "Service is healthy")
+    public ResponseEntity<?> health() {
+        return ResponseEntity.ok(Map.of(
+            "status", "UP",
+            "service", "SangSang Plus Gateway",
+            "timestamp", System.currentTimeMillis(),
+            "version", "1.0.1 - GitHub Actions Test"
+        ));
+    }
 }
