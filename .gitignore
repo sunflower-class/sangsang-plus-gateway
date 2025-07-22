@@ -7,6 +7,10 @@ cookies.txt
 .env.local
 .env.production
 
+# Google OAuth secret files
+src/main/resources/client-secret.json
+**/client-secret*.json
+
 # Kubernetes manifests with real secrets  
 *-secrets.yaml
 k8s-deployment-with-secrets.yaml
