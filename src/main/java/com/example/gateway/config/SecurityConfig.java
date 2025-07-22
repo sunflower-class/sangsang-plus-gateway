@@ -1,5 +1,9 @@
 package com.example.gateway.config;
 
+import com.example.gateway.filter.JwtAuthenticationFilter;
+import com.example.gateway.security.OAuth2AuthenticationSuccessHandler;
+import com.example.gateway.service.OAuth2UserService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -7,16 +11,32 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.web.cors.CorsConfigurationSource;
 
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
+    @Autowired
+    private OAuth2UserService oauth2UserService;
+    
+    @Autowired
+    private CorsConfigurationSource corsConfigurationSource;
+    
+    @Autowired
+    private OAuth2AuthenticationSuccessHandler oauth2SuccessHandler;
+    
+    @Autowired
+    private JwtAuthenticationFilter jwtAuthenticationFilter;
+
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
+            // CORS 설정 추가
+            .cors(cors -> cors.configurationSource(corsConfigurationSource))
             // CSRF 설정 - JWT 사용하지만 쿠키 기반이므로 보호 필요
             .csrf(csrf -> csrf
                 .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
@@ -56,14 +76,19 @@ public class SecurityConfig {
             // OAuth2 로그인 설정
             .oauth2Login(oauth2 -> oauth2
                 .loginPage("/oauth2/authorization/google")
-                .defaultSuccessUrl("/api/auth/oauth2/success", true)
+                .successHandler(oauth2SuccessHandler)
                 .failureUrl("/api/auth/oauth2/failure")
+                .userInfoEndpoint()
+                    .userService(oauth2UserService)
+                    .and()
                 .authorizationEndpoint()
                     .baseUri("/oauth2/authorization")
                     .and()
                 .redirectionEndpoint()
                     .baseUri("/login/oauth2/code/*")
-            );
+            )
+            // JWT 인증 필터 추가
+            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         
         return http.build();
     }

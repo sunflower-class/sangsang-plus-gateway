@@ -1,6 +1,7 @@
 package com.example.gateway.dto.response;
 
 public class AuthResponse {
+    private String message;
     private String token;
     private String refreshToken;
     private UserResponse user;
@@ -13,6 +14,23 @@ public class AuthResponse {
         this.refreshToken = refreshToken;
         this.user = user;
         this.expiresIn = expiresIn;
+    }
+    
+    public static AuthResponse withMessage(String message, String token, String refreshToken, UserResponse user) {
+        AuthResponse response = new AuthResponse();
+        response.message = message;
+        response.token = token;
+        response.refreshToken = refreshToken;
+        response.user = user;
+        return response;
+    }
+    
+    public String getMessage() { 
+        return message; 
+    }
+    
+    public void setMessage(String message) { 
+        this.message = message; 
     }
     
     public String getToken() { 

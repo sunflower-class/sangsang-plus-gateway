@@ -40,15 +40,24 @@ public class AuthController {
     @Operation(summary = "User Registration", description = "Register a new user with email and password")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "200", description = "Registration successful"),
+        @ApiResponse(responseCode = "302", description = "Registration successful - redirected to dashboard"),
         @ApiResponse(responseCode = "400", description = "Registration failed - email already exists or validation error")
     })
     public ResponseEntity<?> register(@Valid @RequestBody CreateUserRequest request, 
-                                    HttpServletResponse httpResponse) {
+                                    HttpServletResponse httpResponse,
+                                    @RequestParam(required = false) Boolean redirect) {
         try {
             AuthResponse response = authService.register(request);
             
             // 쿠키에 토큰 설정
             setTokenCookies(httpResponse, response.getToken(), response.getRefreshToken());
+            
+            // 리디렉션 요청이 있으면 리디렉션 처리
+            if (redirect != null && redirect) {
+                httpResponse.setStatus(302);
+                httpResponse.setHeader("Location", "https://oauth.buildingbite.com/dashboard?auth=success");
+                return ResponseEntity.status(302).build();
+            }
             
             // 토큰 정보를 제거한 응답 반환 (보안상 쿠키로만 전달)
             return ResponseEntity.ok(Map.of(
@@ -56,6 +65,11 @@ public class AuthController {
                 "user", response.getUser()
             ));
         } catch (RuntimeException e) {
+            if (redirect != null && redirect) {
+                httpResponse.setStatus(302);
+                httpResponse.setHeader("Location", "https://oauth.buildingbite.com/register?error=registration_failed");
+                return ResponseEntity.status(302).build();
+            }
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
@@ -64,15 +78,24 @@ public class AuthController {
     @Operation(summary = "User Login", description = "Authenticate user and return JWT token in cookies")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "200", description = "Login successful"),
+        @ApiResponse(responseCode = "302", description = "Login successful - redirected to dashboard"),
         @ApiResponse(responseCode = "400", description = "Login failed - invalid credentials")
     })
     public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request,
-                                 HttpServletResponse httpResponse) {
+                                 HttpServletResponse httpResponse,
+                                 @RequestParam(required = false) Boolean redirect) {
         try {
             AuthResponse response = authService.login(request);
             
             // 쿠키에 토큰 설정
             setTokenCookies(httpResponse, response.getToken(), response.getRefreshToken());
+            
+            // 리디렉션 요청이 있으면 리디렉션 처리
+            if (redirect != null && redirect) {
+                httpResponse.setStatus(302);
+                httpResponse.setHeader("Location", "https://oauth.buildingbite.com/dashboard?auth=success");
+                return ResponseEntity.status(302).build();
+            }
             
             // 토큰 정보를 제거한 응답 반환 (보안상 쿠키로만 전달)
             return ResponseEntity.ok(Map.of(
@@ -80,6 +103,11 @@ public class AuthController {
                 "user", response.getUser()
             ));
         } catch (RuntimeException e) {
+            if (redirect != null && redirect) {
+                httpResponse.setStatus(302);
+                httpResponse.setHeader("Location", "https://oauth.buildingbite.com/login?error=login_failed");
+                return ResponseEntity.status(302).build();
+            }
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
