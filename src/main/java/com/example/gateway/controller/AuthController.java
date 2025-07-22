@@ -202,7 +202,7 @@ public class AuthController {
             "status", "UP",
             "service", "SangSang Plus Gateway",
             "timestamp", System.currentTimeMillis(),
-            "version", "1.0.1 - GitHub Actions Test"
+            "version", "1.0.2 - CI/CD Pipeline Working!"
         ));
     }
 }
