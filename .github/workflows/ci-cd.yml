@@ -57,7 +57,7 @@ jobs:
         images: ${{ env.DOCKER_IMAGE }}
         tags: |
           type=ref,event=branch
-          type=sha,prefix={{branch}}-
+          type=sha,prefix={{branch}}-,format=short
           type=raw,value=latest,enable={{is_default_branch}}
 
     - name: Build and push Docker image
@@ -93,11 +93,12 @@ jobs:
     - name: Deploy to default namespace
       run: |
         # Update image tag
-        sed -i "s|image: buildingbite/sangsangplus-gateway:.*|image: buildingbite/sangsangplus-gateway:main-${{ github.sha }}|g" k8s-deployment.yaml
+        SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+        sed -i "s|image: buildingbite/sangsangplus-gateway:.*|image: buildingbite/sangsangplus-gateway:main-${SHORT_SHA}|g" k8s-deployment.yaml
         
         # Apply to default namespace
         kubectl apply -f k8s-deployment.yaml
-        kubectl rollout status deployment/sangsang-plus-gateway --timeout=300s
+        kubectl rollout status deployment/sangsang-plus-gateway --timeout=600s
 
     - name: Run health check
       run: |
