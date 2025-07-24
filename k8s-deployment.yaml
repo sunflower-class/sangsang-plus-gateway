@@ -28,6 +28,10 @@ spec:
         - name: USER_SERVICE_URL
           value: "http://user-service.user-service.svc.cluster.local"
         
+        # Product 서비스 URL
+        - name: PRODUCT_SERVICE_URL
+          value: "http://product-service.sangsangplus.svc.cluster.local"
+        
         # Frontend URL
         - name: FRONTEND_URL
           value: "https://oauth.buildingbite.com"

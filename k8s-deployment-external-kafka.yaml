@@ -30,6 +30,10 @@ spec:
         - name: USER_SERVICE_URL
           value: "http://user-service:8081"
         
+        # Product 서비스 URL
+        - name: PRODUCT_SERVICE_URL
+          value: "http://product-service.sangsangplus.svc.cluster.local"
+        
         # JWT Secret
         - name: JWT_SECRET
           valueFrom:
