@@ -5,17 +5,6 @@ spring:
   application:
     name: gateway-service
 
-  cloud:
-    gateway:
-      routes:
-        - id: user-service
-          uri: ${USER_SERVICE_URL:http://user-service}
-          predicates:
-            - Path=/api/users/**
-        - id: product-service
-          uri: ${PRODUCT_SERVICE_URL:http://product-service}
-          predicates:
-            - Path=/api/products/**
   
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
