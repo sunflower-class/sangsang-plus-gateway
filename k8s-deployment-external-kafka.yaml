@@ -32,7 +32,7 @@ spec:
         
         # Product 서비스 URL
         - name: PRODUCT_SERVICE_URL
-          value: "http://product-service.sangsangplus.svc.cluster.local"
+          value: "http://product-service.product-service.svc.cluster.local"
         
         # JWT Secret
         - name: JWT_SECRET
