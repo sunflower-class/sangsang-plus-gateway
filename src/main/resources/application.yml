@@ -40,7 +40,7 @@ user-service:
   url: ${USER_SERVICE_URL:http://user-service}
 
 product-service:
-  url: ${PRODUCT_SERVICE_URL:http://product-service}
+  url: ${PRODUCT_SERVICE_URL:http://product-service.sangsangplus.svc.cluster.local}
 
 # App Configuration
 app:
