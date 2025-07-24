@@ -21,7 +21,7 @@ import org.springframework.context.annotation.Configuration;
         description = "API Gateway for MSA Architecture - Handles Authentication and Routing"
     ),
     servers = {
-        @Server(url = "http://localhost:8081", description = "Gateway Service")
+        @Server(url = "http://localhost:8080", description = "Gateway Service")
     }
 )
 @SecurityScheme(

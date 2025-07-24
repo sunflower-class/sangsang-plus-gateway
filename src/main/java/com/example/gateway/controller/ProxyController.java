@@ -26,6 +26,9 @@ public class ProxyController {
     
     @Value("${user-service.url}")
     private String userServiceUrl;
+
+    @Value("${product-service.url}")
+    private String productServiceUrl;
     
     // User 서비스로 요청을 프록시
     @RequestMapping(value = "/users/**", method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE})
@@ -48,6 +51,42 @@ public class ProxyController {
         try {
             ResponseEntity<Object> response = restTemplate.exchange(
                 userServiceUrl + path,
+                HttpMethod.valueOf(method),
+                entity,
+                Object.class
+            );
+            
+            return ResponseEntity.status(response.getStatusCode())
+                    .headers(response.getHeaders())
+                    .body(response.getBody());
+                    
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Service unavailable: " + e.getMessage()));
+        }
+    }
+
+    // Product 서비스로 요청을 프록시
+    @RequestMapping(value = "/products/**", method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE})
+    @Operation(summary = "Proxy to Product Service", description = "Forward requests to Product Service for Product management operations")
+    @ApiResponse(responseCode = "200", description = "Request forwarded successfully")
+    @SecurityRequirement(name = "cookieAuth")
+    public ResponseEntity<?> proxyToProductService(
+            HttpServletRequest request,
+            @RequestBody(required = false) Object body) {
+        
+        String path = request.getRequestURI();
+        String method = request.getMethod();
+        
+        // 원본 헤더 복사
+        HttpHeaders headers = new HttpHeaders();
+        // Add authenticated user info from JWT if needed
+        
+        HttpEntity<Object> entity = new HttpEntity<>(body, headers);
+        
+        try {
+            ResponseEntity<Object> response = restTemplate.exchange(
+                productServiceUrl + path,
                 HttpMethod.valueOf(method),
                 entity,
                 Object.class

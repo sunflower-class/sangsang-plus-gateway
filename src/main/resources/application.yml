@@ -12,6 +12,10 @@ spring:
           uri: ${USER_SERVICE_URL:http://user-service}
           predicates:
             - Path=/api/users/**
+        - id: product-service
+          uri: ${PRODUCT_SERVICE_URL:http://product-service}
+          predicates:
+            - Path=/api/products/**
   
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
@@ -45,6 +49,9 @@ jwt:
 # Service URLs
 user-service:
   url: ${USER_SERVICE_URL:http://user-service}
+
+product-service:
+  url: ${PRODUCT_SERVICE_URL:http://product-service}
 
 # App Configuration
 app:
