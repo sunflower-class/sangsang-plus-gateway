@@ -2,7 +2,21 @@
   "permissions": {
     "allow": [
       "Bash(kubectl get svc:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(kubectl get pod:*)",
+      "Bash(kubectl exec:*)",
+      "Bash(kubectl get deployment:*)",
+      "Bash(kubectl patch:*)",
+      "Bash(kubectl get secret:*)",
+      "Bash(kubectl delete:*)",
+      "Bash(kubectl rollout status:*)",
+      "Bash(kubectl logs:*)",
+      "Bash(kubectl create secret:*)",
+      "Bash(--from-literal=db-username='sangsangplus_admin' )",
+      "Bash(--from-literal=db-password='ekdma1443!' )",
+      "Bash(--from-literal=jwt-secret='VQotLXWvspUdoagFs2jmViXH0gJX4jEIe85KIoFODCE=' )",
+      "Bash(-n product-service)",
+      "Bash(kubectl rollout:*)"
     ],
     "deny": []
   }

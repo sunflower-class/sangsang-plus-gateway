@@ -158,6 +158,42 @@ kubectl logs -f deployment/sangsang-plus-gateway
 kubectl logs deployment/sangsang-plus-gateway --since=10m
 ```
 
+### 4. Google OAuth2 문제 해결
+
+#### OAuth2 로그인 실패 시
+1. **User Service 상태 확인**
+   ```bash
+   kubectl get pods -n user-service
+   kubectl logs deployment/user-service -n user-service
+   ```
+
+2. **User Service Secret 확인**
+   ```bash
+   # User Service는 다음 secret이 필요합니다:
+   kubectl create secret generic user-service-secrets \
+     --from-literal=db-username='postgre' \
+     --from-literal=db-password='postgre' \
+     --from-literal=encryption-key='your-encryption-key' \
+     --from-literal=jwt-secret='your-jwt-secret' \
+     -n user-service
+   ```
+
+3. **Gateway OAuth2 로그 확인**
+   ```bash
+   kubectl logs deployment/sangsang-plus-gateway | grep -i oauth
+   ```
+
+#### 브라우저 캐시 문제
+OAuth2 로그인이 예상과 다르게 동작할 경우:
+- **증상**: Google 로그인 페이지를 거치지 않고 바로 성공 페이지로 리다이렉트
+- **원인**: 브라우저에 이미 Google 세션이나 JWT 토큰이 존재
+- **해결 방법**:
+  1. 브라우저 시크릿/프라이빗 모드 사용
+  2. 브라우저 쿠키 삭제:
+     - `buildingbite.com` 도메인의 모든 쿠키
+     - `accounts.google.com` 쿠키
+  3. Google 계정에서 로그아웃 후 재시도
+
 ## 개발팀 협업
 
 ### 1. 코드 변경 후 배포

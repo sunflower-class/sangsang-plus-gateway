@@ -36,7 +36,7 @@ spec:
         - name: FRONTEND_URL
           value: "https://oauth.buildingbite.com"
         
-        # JWT Secret (반드시 변경하세요!)
+        # JWT Secret
         - name: JWT_SECRET
           valueFrom:
             secretKeyRef:

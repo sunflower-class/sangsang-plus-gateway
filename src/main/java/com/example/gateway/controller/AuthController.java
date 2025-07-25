@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.*;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.util.Map;
+import org.springframework.web.bind.annotation.CookieValue;
 
 @RestController
 @RequestMapping("/api")
@@ -106,32 +107,72 @@ public class AuthController {
     }
     
     @PostMapping("/auth/refresh")
-    @Operation(summary = "Refresh Token", description = "Generate new access token using refresh token")
+    @Operation(summary = "Refresh Token", description = "Generate new access token using refresh token from cookie or header")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "200", description = "Token refreshed successfully"),
         @ApiResponse(responseCode = "400", description = "Invalid refresh token")
     })
-    @SecurityRequirement(name = "bearerAuth")
-    public ResponseEntity<?> refreshToken(@RequestHeader("Authorization") String refreshToken) {
+    public ResponseEntity<?> refreshToken(
+            @CookieValue(value = "refresh_token", required = false) String refreshTokenCookie,
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            HttpServletResponse httpResponse) {
         try {
-            // Remove "Bearer " prefix if present
-            if (refreshToken.startsWith("Bearer ")) {
-                refreshToken = refreshToken.substring(7);
+            String refreshToken = null;
+            
+            // 먼저 쿠키에서 refresh token 확인
+            if (refreshTokenCookie != null && !refreshTokenCookie.isEmpty()) {
+                refreshToken = refreshTokenCookie;
+            }
+            // 쿠키에 없으면 Authorization 헤더에서 확인
+            else if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                refreshToken = authHeader.substring(7);
+            }
+            
+            if (refreshToken == null || refreshToken.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Refresh token not provided"));
             }
             
             AuthResponse response = authService.refreshToken(refreshToken);
-            return ResponseEntity.ok(response);
+            
+            // 새로운 access token을 쿠키에 설정
+            ResponseCookie accessCookie = ResponseCookie.from("access_token", response.getToken())
+                    .httpOnly(true)
+                    .secure(false)
+                    .sameSite("Lax")
+                    .path("/")
+                    .maxAge(60 * 60) // 1시간
+                    .build();
+            
+            httpResponse.addHeader(HttpHeaders.SET_COOKIE, accessCookie.toString());
+            
+            // 응답에서 토큰 정보 제거 (보안상 쿠키로만 전달)
+            return ResponseEntity.ok(Map.of(
+                "message", "Token refreshed successfully",
+                "user", response.getUser()
+            ));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
     
     @PostMapping("/auth/logout")
-    @Operation(summary = "User Logout", description = "Clear authentication cookies")
+    @Operation(summary = "User Logout", description = "Clear authentication cookies and blacklist tokens")
     @ApiResponse(responseCode = "200", description = "Logout successful")
     @SecurityRequirement(name = "cookieAuth")
-    public ResponseEntity<?> logout(HttpServletResponse httpResponse) {
+    public ResponseEntity<?> logout(
+            @CookieValue(value = "access_token", required = false) String accessToken,
+            @CookieValue(value = "refresh_token", required = false) String refreshToken,
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            HttpServletResponse httpResponse) {
         try {
+            // Authorization 헤더에서 토큰 추출 (쿠키에 없는 경우)
+            if (accessToken == null && authHeader != null && authHeader.startsWith("Bearer ")) {
+                accessToken = authHeader.substring(7);
+            }
+            
+            // 토큰 블랙리스트에 추가
+            authService.logout(accessToken, refreshToken);
+            
             // 쿠키 삭제
             clearTokenCookies(httpResponse);
             

@@ -25,6 +25,9 @@ public class AuthService {
     private JwtService jwtService;
     
     @Autowired
+    private TokenBlacklistService tokenBlacklistService;
+    
+    @Autowired
     private RestTemplate restTemplate;
     
     @Value("${user-service.url}")
@@ -134,12 +137,17 @@ public class AuthService {
         }
     }
     
-    public void logout(String token) {
-        // In a real implementation, you might want to:
-        // 1. Add the token to a blacklist
-        // 2. Remove refresh token from database
-        // 3. Clear any server-side sessions
-        
-        // For now, logout is handled client-side by removing tokens
+    public void logout(String accessToken, String refreshToken) {
+        // 액세스 토큰과 리프레시 토큰 모두 블랙리스트에 추가
+        if (accessToken != null && !accessToken.isEmpty()) {
+            tokenBlacklistService.blacklistToken(accessToken);
+        }
+        if (refreshToken != null && !refreshToken.isEmpty()) {
+            tokenBlacklistService.blacklistToken(refreshToken);
+        }
+    }
+    
+    public boolean isTokenValid(String token) {
+        return !tokenBlacklistService.isTokenBlacklisted(token);
     }
 }

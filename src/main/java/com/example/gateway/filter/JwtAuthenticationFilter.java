@@ -27,6 +27,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Autowired
     private JwtService jwtService;
     
+    @Autowired
+    private com.example.gateway.service.AuthService authService;
+    
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, 
                                     FilterChain filterChain) throws ServletException, IOException {
@@ -44,6 +47,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         
         if (token != null) {
             try {
+                // 블랙리스트 확인
+                if (!authService.isTokenValid(token)) {
+                    logger.debug("Token is blacklisted");
+                    filterChain.doFilter(request, response);
+                    return;
+                }
+                
                 String email = jwtService.extractUsername(token);
                 if (email != null && jwtService.validateToken(token, email)) {
                     // Create authentication object
@@ -89,6 +99,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                path.startsWith("/login/oauth2/") ||
                path.equals("/api/auth/login") ||
                path.equals("/api/auth/register") ||
+               path.equals("/api/auth/refresh") ||
                path.equals("/api/health");
     }
 }
