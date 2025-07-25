@@ -33,12 +33,14 @@ public class JwtService {
     
     public String generateAccessToken(String username) {
         Map<String, Object> claims = new HashMap<>();
+        claims.put("role", "USER");  // Product 서비스에서 필요한 role 클레임 추가
         return createToken(claims, username, accessTokenExpiration);
     }
     
     public String generateRefreshToken(String username) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("type", "refresh");
+        claims.put("role", "USER");  // 리프레시 토큰에도 role 추가 (일관성)
         return createToken(claims, username, refreshTokenExpiration);
     }
     
