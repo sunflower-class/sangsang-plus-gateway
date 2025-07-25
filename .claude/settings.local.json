@@ -16,7 +16,8 @@
       "Bash(--from-literal=db-password='ekdma1443!' )",
       "Bash(--from-literal=jwt-secret='VQotLXWvspUdoagFs2jmViXH0gJX4jEIe85KIoFODCE=' )",
       "Bash(-n product-service)",
-      "Bash(kubectl rollout:*)"
+      "Bash(kubectl rollout:*)",
+      "Bash(kubectl get:*)"
     ],
     "deny": []
   }
