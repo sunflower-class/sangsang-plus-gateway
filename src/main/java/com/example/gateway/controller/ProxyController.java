@@ -14,7 +14,9 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.Cookie;
 import java.util.Map;
+import java.util.Enumeration;
 
 @RestController
 @RequestMapping("/api")
@@ -44,7 +46,34 @@ public class ProxyController {
         
         // 원본 헤더 복사
         HttpHeaders headers = new HttpHeaders();
-        // Add authenticated user info from JWT if needed
+        
+        // Authorization 헤더 복사
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader != null) {
+            headers.set("Authorization", authHeader);
+        }
+        
+        // 쿠키에서 JWT 토큰 추출 및 Authorization 헤더로 변환
+        Cookie[] cookies = request.getCookies();
+        if (cookies != null && authHeader == null) {
+            for (Cookie cookie : cookies) {
+                if ("access_token".equals(cookie.getName())) {
+                    headers.set("Authorization", "Bearer " + cookie.getValue());
+                    break;
+                }
+            }
+        }
+        
+        // 기타 필요한 헤더들 복사
+        Enumeration<String> headerNames = request.getHeaderNames();
+        while (headerNames.hasMoreElements()) {
+            String headerName = headerNames.nextElement();
+            if (!"authorization".equalsIgnoreCase(headerName) && 
+                !"host".equalsIgnoreCase(headerName) &&
+                !"content-length".equalsIgnoreCase(headerName)) {
+                headers.set(headerName, request.getHeader(headerName));
+            }
+        }
         
         HttpEntity<Object> entity = new HttpEntity<>(body, headers);
         
@@ -80,7 +109,34 @@ public class ProxyController {
         
         // 원본 헤더 복사
         HttpHeaders headers = new HttpHeaders();
-        // Add authenticated user info from JWT if needed
+        
+        // Authorization 헤더 복사
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader != null) {
+            headers.set("Authorization", authHeader);
+        }
+        
+        // 쿠키에서 JWT 토큰 추출 및 Authorization 헤더로 변환
+        Cookie[] cookies = request.getCookies();
+        if (cookies != null && authHeader == null) {
+            for (Cookie cookie : cookies) {
+                if ("access_token".equals(cookie.getName())) {
+                    headers.set("Authorization", "Bearer " + cookie.getValue());
+                    break;
+                }
+            }
+        }
+        
+        // 기타 필요한 헤더들 복사
+        Enumeration<String> headerNames = request.getHeaderNames();
+        while (headerNames.hasMoreElements()) {
+            String headerName = headerNames.nextElement();
+            if (!"authorization".equalsIgnoreCase(headerName) && 
+                !"host".equalsIgnoreCase(headerName) &&
+                !"content-length".equalsIgnoreCase(headerName)) {
+                headers.set(headerName, request.getHeader(headerName));
+            }
+        }
         
         HttpEntity<Object> entity = new HttpEntity<>(body, headers);
         
