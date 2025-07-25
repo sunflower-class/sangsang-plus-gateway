@@ -6,6 +6,7 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 
 import java.util.Arrays;
 
@@ -14,7 +15,12 @@ public class WebConfig {
     
     @Bean
     public RestTemplate restTemplate() {
-        return new RestTemplate();
+        HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory();
+        factory.setConnectTimeout(5000); // 5초 연결 타임아웃
+        factory.setReadTimeout(30000);   // 30초 읽기 타임아웃
+        
+        RestTemplate restTemplate = new RestTemplate(factory);
+        return restTemplate;
     }
     
     @Bean
