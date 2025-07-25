@@ -44,6 +44,7 @@ public class SecurityConfig {
                     // API 엔드포인트는 JWT로 보호되므로 CSRF 제외
                     new AntPathRequestMatcher("/api/auth/**"),
                     new AntPathRequestMatcher("/api/users/**"),
+                    new AntPathRequestMatcher("/api/products/**"),
                     new AntPathRequestMatcher("/oauth2/**"),
                     new AntPathRequestMatcher("/login/oauth2/**")
                 )
@@ -70,7 +71,10 @@ public class SecurityConfig {
                 .antMatchers(HttpMethod.DELETE, "/api/users/**").authenticated()
                 .antMatchers(HttpMethod.GET, "/api/users/**").authenticated()
                 
-                // 나머지 모든 요청은 404 처리 (존재하지 않는 경로)
+                // Product 서비스 프록시 엔드포인트
+                .antMatchers("/api/products/**").authenticated()
+                
+                // 나머지 모든 요청은 허용
                 .anyRequest().permitAll()
             )
             // OAuth2 로그인 설정
