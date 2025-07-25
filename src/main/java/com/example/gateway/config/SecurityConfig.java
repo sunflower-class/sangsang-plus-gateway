@@ -64,15 +64,12 @@ public class SecurityConfig {
                 // 공개 읽기 전용 엔드포인트
                 .antMatchers(HttpMethod.GET, "/api/users").permitAll()
                 
-                // 인증이 필요한 엔드포인트
-                .antMatchers("/api/auth/refresh", "/api/auth/logout").authenticated()
-                .antMatchers(HttpMethod.POST, "/api/users").authenticated()
-                .antMatchers(HttpMethod.PUT, "/api/users/**").authenticated()
-                .antMatchers(HttpMethod.DELETE, "/api/users/**").authenticated()
-                .antMatchers(HttpMethod.GET, "/api/users/**").authenticated()
+                // 마이크로서비스 프록시 엔드포인트 (각 서비스에서 권한 처리)
+                .antMatchers("/api/products/**").permitAll()
+                .antMatchers("/api/users/**").permitAll()
                 
-                // Product 서비스 프록시 엔드포인트
-                .antMatchers("/api/products/**").authenticated()
+                // Gateway 전용 인증 엔드포인트
+                .antMatchers("/api/auth/refresh", "/api/auth/logout").authenticated()
                 
                 // 나머지 모든 요청은 허용
                 .anyRequest().permitAll()
