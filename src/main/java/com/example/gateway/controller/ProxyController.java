@@ -12,6 +12,8 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.Cookie;
@@ -22,6 +24,8 @@ import java.util.Enumeration;
 @RequestMapping("/api")
 @Tag(name = "User Service Proxy", description = "Proxy endpoints to User Service")
 public class ProxyController {
+    
+    private static final Logger logger = LoggerFactory.getLogger(ProxyController.class);
     
     @Autowired
     private RestTemplate restTemplate;
@@ -107,6 +111,8 @@ public class ProxyController {
         String path = request.getRequestURI();
         String method = request.getMethod();
         
+        logger.info("[PRODUCT PROXY] Incoming {} request to {}", method, path);
+        
         // 원본 헤더 복사
         HttpHeaders headers = new HttpHeaders();
         
@@ -114,6 +120,7 @@ public class ProxyController {
         String authHeader = request.getHeader("Authorization");
         if (authHeader != null) {
             headers.set("Authorization", authHeader);
+            logger.info("[PRODUCT PROXY] Using Authorization header: Bearer ***[{}]***", authHeader.substring(0, Math.min(20, authHeader.length())));
         }
         
         // 쿠키에서 JWT 토큰 추출 및 Authorization 헤더로 변환
@@ -121,10 +128,16 @@ public class ProxyController {
         if (cookies != null && authHeader == null) {
             for (Cookie cookie : cookies) {
                 if ("access_token".equals(cookie.getName())) {
-                    headers.set("Authorization", "Bearer " + cookie.getValue());
+                    String token = cookie.getValue();
+                    headers.set("Authorization", "Bearer " + token);
+                    logger.info("[PRODUCT PROXY] Using cookie token: Bearer ***[{}]***", token.substring(0, Math.min(20, token.length())));
                     break;
                 }
             }
+        }
+        
+        if (authHeader == null && (cookies == null || cookies.length == 0)) {
+            logger.warn("[PRODUCT PROXY] No Authorization header or access_token cookie found!");
         }
         
         // 기타 필요한 헤더들 복사
@@ -141,12 +154,17 @@ public class ProxyController {
         HttpEntity<Object> entity = new HttpEntity<>(body, headers);
         
         try {
+            String targetUrl = productServiceUrl + path;
+            logger.info("[PRODUCT PROXY] Forwarding to: {}", targetUrl);
+            
             ResponseEntity<Object> response = restTemplate.exchange(
-                productServiceUrl + path,
+                targetUrl,
                 HttpMethod.valueOf(method),
                 entity,
                 Object.class
             );
+            
+            logger.info("[PRODUCT PROXY] Response status: {}", response.getStatusCode());
             
             return ResponseEntity.status(response.getStatusCode())
                     .headers(response.getHeaders())
