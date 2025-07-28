@@ -1,0 +1,455 @@
+package com.example.gateway.controller;
+
+import com.example.gateway.dto.request.CreateUserRequest;
+import com.example.gateway.dto.request.LoginRequest;
+import com.example.gateway.dto.response.AuthResponse;
+import com.example.gateway.dto.response.UserResponse;
+import com.example.gateway.service.KeycloakService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.client.RestTemplate;
+
+import javax.validation.Valid;
+import java.util.HashMap;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/keycloak")
+public class KeycloakAuthController {
+
+    @Autowired
+    private KeycloakService keycloakService;
+
+    @Value("${keycloak.auth-server-url}")
+    private String keycloakServerUrl;
+
+    @Value("${keycloak.realm}")
+    private String realm;
+
+    @Value("${keycloak.resource}")
+    private String clientId;
+
+    @Value("${keycloak.credentials.secret}")
+    private String clientSecret;
+
+    @Value("${user-service.url}")
+    private String userServiceUrl;
+
+    private final RestTemplate restTemplate = new RestTemplate();
+
+    @PostMapping("/register")
+    public ResponseEntity<AuthResponse> register(@Valid @RequestBody CreateUserRequest request) {
+        try {
+            // 1. 먼저 유저 서비스에 사용자 생성
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            
+            HttpEntity<CreateUserRequest> entity = new HttpEntity<>(request, headers);
+            ResponseEntity<UserResponse> userResponse = restTemplate.postForEntity(
+                userServiceUrl + "/api/users",
+                entity,
+                UserResponse.class
+            );
+            
+            if (!userResponse.getStatusCode().is2xxSuccessful()) {
+                return ResponseEntity.badRequest()
+                    .body(new AuthResponse(false, "회원가입 실패: 유저 서비스 오류", null, null, null));
+            }
+            
+            // 2. KeyCloak에 사용자 생성
+            if (!createKeycloakUser(request)) {
+                // KeyCloak 생성 실패해도 유저 서비스에는 이미 생성됨
+                // 로그인은 시도해볼 수 있음
+                System.err.println("KeyCloak 사용자 생성 실패, 하지만 계속 진행");
+            }
+            
+            // 3. 생성된 계정으로 자동 로그인
+            LoginRequest loginRequest = new LoginRequest();
+            loginRequest.setEmail(request.getEmail());
+            loginRequest.setPassword(request.getPassword());
+            
+            return login(loginRequest);
+            
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                .body(new AuthResponse(false, "회원가입 실패: " + e.getMessage(), null, null, null));
+        }
+    }
+
+    @PostMapping("/login")
+    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
+        try {
+            String tokenUrl = keycloakServerUrl + "/realms/" + realm + "/protocol/openid-connect/token";
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+            MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+            body.add("grant_type", "password");
+            body.add("client_id", clientId);
+            body.add("client_secret", clientSecret);
+            body.add("username", request.getEmail());
+            body.add("password", request.getPassword());
+
+            HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(body, headers);
+            ResponseEntity<Map> response = restTemplate.postForEntity(tokenUrl, entity, Map.class);
+
+            if (response.getStatusCode() == HttpStatus.OK) {
+                Map<String, Object> tokenResponse = response.getBody();
+                
+                return ResponseEntity.ok(new AuthResponse(
+                    true,
+                    "로그인 성공",
+                    (String) tokenResponse.get("access_token"),
+                    (String) tokenResponse.get("refresh_token"),
+                    (Integer) tokenResponse.get("expires_in")
+                ));
+            }
+        } catch (Exception e) {
+            // KeyCloak에 사용자가 없는 경우
+            if (e.getMessage().contains("401") || e.getMessage().contains("Invalid user credentials")) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new AuthResponse(false, "USER_NOT_FOUND", null, null, null));
+            }
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(new AuthResponse(false, "로그인 실패: " + e.getMessage(), null, null, null));
+        }
+
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+            .body(new AuthResponse(false, "로그인 실패", null, null, null));
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<AuthResponse> refreshToken(@RequestBody Map<String, String> request) {
+        try {
+            String refreshToken = request.get("refresh_token");
+            if (refreshToken == null) {
+                return ResponseEntity.badRequest()
+                    .body(new AuthResponse(false, "refresh_token이 필요합니다", null, null, null));
+            }
+
+            String tokenUrl = keycloakServerUrl + "/realms/" + realm + "/protocol/openid-connect/token";
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+            MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+            body.add("grant_type", "refresh_token");
+            body.add("client_id", clientId);
+            body.add("client_secret", clientSecret);
+            body.add("refresh_token", refreshToken);
+
+            HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(body, headers);
+            ResponseEntity<Map> response = restTemplate.postForEntity(tokenUrl, entity, Map.class);
+
+            if (response.getStatusCode() == HttpStatus.OK) {
+                Map<String, Object> tokenResponse = response.getBody();
+                return ResponseEntity.ok(new AuthResponse(
+                    true,
+                    "토큰 갱신 성공",
+                    (String) tokenResponse.get("access_token"),
+                    (String) tokenResponse.get("refresh_token"),
+                    (Integer) tokenResponse.get("expires_in")
+                ));
+            }
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(new AuthResponse(false, "토큰 갱신 실패: " + e.getMessage(), null, null, null));
+        }
+
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+            .body(new AuthResponse(false, "토큰 갱신 실패", null, null, null));
+    }
+
+    @PostMapping("/logout")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<Map<String, Object>> logout(@RequestBody Map<String, String> request) {
+        try {
+            String refreshToken = request.get("refresh_token");
+            if (refreshToken == null) {
+                return ResponseEntity.badRequest()
+                    .body(Map.of("success", false, "message", "refresh_token이 필요합니다"));
+            }
+
+            String logoutUrl = keycloakServerUrl + "/realms/" + realm + "/protocol/openid-connect/logout";
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+            MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+            body.add("client_id", clientId);
+            body.add("client_secret", clientSecret);
+            body.add("refresh_token", refreshToken);
+
+            HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(body, headers);
+            restTemplate.postForEntity(logoutUrl, entity, String.class);
+
+            return ResponseEntity.ok(Map.of("success", true, "message", "로그아웃 성공"));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("success", false, "message", "로그아웃 실패: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/userinfo")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<UserResponse> getUserInfo() {
+        try {
+            String username = keycloakService.getCurrentUsername();
+            String userId = keycloakService.getCurrentUserId();
+            String email = keycloakService.getCurrentUserEmail();
+            
+            if (username == null) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            }
+
+            UserResponse userResponse = new UserResponse();
+            userResponse.setId(userId);
+            userResponse.setUsername(username);
+            userResponse.setEmail(email);
+            userResponse.setRoles(keycloakService.getCurrentUserRoles());
+
+            return ResponseEntity.ok(userResponse);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @GetMapping("/validate")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<Map<String, Object>> validateToken() {
+        try {
+            if (keycloakService.isAuthenticated()) {
+                return ResponseEntity.ok(Map.of(
+                    "valid", true,
+                    "username", keycloakService.getCurrentUsername(),
+                    "roles", keycloakService.getCurrentUserRoles()
+                ));
+            } else {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("valid", false, "message", "토큰이 유효하지 않습니다"));
+            }
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(Map.of("valid", false, "message", "토큰 검증 실패"));
+        }
+    }
+
+    @GetMapping("/admin/users")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Map<String, Object>> getAdminData() {
+        return ResponseEntity.ok(Map.of(
+            "message", "관리자 전용 데이터",
+            "currentUser", keycloakService.getCurrentUsername(),
+            "roles", keycloakService.getCurrentUserRoles()
+        ));
+    }
+
+    @PostMapping("/social-login/{provider}")
+    public ResponseEntity<AuthResponse> socialLogin(
+            @PathVariable String provider,
+            @RequestBody Map<String, String> request) {
+        try {
+            String code = request.get("code");
+            String redirectUri = request.get("redirect_uri");
+            
+            if (code == null || redirectUri == null) {
+                return ResponseEntity.badRequest()
+                    .body(new AuthResponse(false, "code와 redirect_uri가 필요합니다", null, null, null));
+            }
+
+            // KeyCloak 소셜 로그인 토큰 교환
+            String tokenUrl = keycloakServerUrl + "/realms/" + realm + "/protocol/openid-connect/token";
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+            MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+            body.add("grant_type", "authorization_code");
+            body.add("client_id", clientId);
+            body.add("client_secret", clientSecret);
+            body.add("code", code);
+            body.add("redirect_uri", redirectUri);
+
+            HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(body, headers);
+            ResponseEntity<Map> response = restTemplate.postForEntity(tokenUrl, entity, Map.class);
+
+            if (response.getStatusCode() == HttpStatus.OK) {
+                Map<String, Object> tokenResponse = response.getBody();
+                
+                // 소셜 로그인 성공 시 유저 정보 동기화
+                syncSocialLoginUser(provider, (String) tokenResponse.get("access_token"));
+                
+                return ResponseEntity.ok(new AuthResponse(
+                    true,
+                    provider + " 소셜 로그인 성공",
+                    (String) tokenResponse.get("access_token"),
+                    (String) tokenResponse.get("refresh_token"),
+                    (Integer) tokenResponse.get("expires_in")
+                ));
+            }
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(new AuthResponse(false, provider + " 소셜 로그인 실패: " + e.getMessage(), null, null, null));
+        }
+
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+            .body(new AuthResponse(false, provider + " 소셜 로그인 실패", null, null, null));
+    }
+
+    @GetMapping("/social-login/{provider}/url")
+    public ResponseEntity<Map<String, String>> getSocialLoginUrl(
+            @PathVariable String provider,
+            @RequestParam(required = false) String redirectUri) {
+        try {
+            String baseRedirectUri = redirectUri != null ? redirectUri : "https://oauth.buildingbite.com/callback";
+            
+            String authUrl = keycloakServerUrl + "/realms/" + realm + "/protocol/openid-connect/auth" +
+                "?client_id=" + clientId +
+                "&response_type=code" +
+                "&scope=openid email profile" +
+                "&redirect_uri=" + baseRedirectUri +
+                "&kc_idp_hint=" + provider; // KeyCloak Identity Provider hint
+            
+            return ResponseEntity.ok(Map.of(
+                "authUrl", authUrl,
+                "provider", provider,
+                "redirectUri", baseRedirectUri
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("error", "소셜 로그인 URL 생성 실패: " + e.getMessage()));
+        }
+    }
+
+    private void syncSocialLoginUser(String provider, String accessToken) {
+        try {
+            // KeyCloak 토큰으로 사용자 정보 조회
+            String userInfoUrl = keycloakServerUrl + "/realms/" + realm + "/protocol/openid-connect/userinfo";
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setBearerAuth(accessToken);
+            
+            HttpEntity<Void> entity = new HttpEntity<>(headers);
+            ResponseEntity<Map> userInfoResponse = restTemplate.exchange(
+                userInfoUrl, HttpMethod.GET, entity, Map.class);
+            
+            if (userInfoResponse.getStatusCode() == HttpStatus.OK) {
+                Map<String, Object> userInfo = userInfoResponse.getBody();
+                
+                // 유저 서비스에 소셜 로그인 사용자 정보 동기화
+                String email = (String) userInfo.get("email");
+                String temporaryPassword = "oauth2_" + provider + "_" + userInfo.get("sub");
+                syncUserToUserService(email, temporaryPassword, provider);
+            }
+        } catch (Exception e) {
+            // 동기화 실패해도 로그인은 성공으로 처리 (비동기 처리 권장)
+            System.err.println("소셜 로그인 사용자 동기화 실패: " + e.getMessage());
+        }
+    }
+    
+    private void syncUserToUserService(String email, String password, String provider) {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            
+            Map<String, Object> userData = new HashMap<>();
+            userData.put("email", email);
+            userData.put("password", password);
+            
+            String endpoint;
+            if (provider != null) {
+                // 소셜 로그인
+                userData.put("provider", provider);
+                endpoint = this.userServiceUrl + "/api/users/oauth2";
+            } else {
+                // 일반 로그인
+                endpoint = this.userServiceUrl + "/api/users";
+            }
+            
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(userData, headers);
+            ResponseEntity<Map> response = restTemplate.postForEntity(endpoint, entity, Map.class);
+            
+            if (response.getStatusCode().is2xxSuccessful()) {
+                System.out.println("유저 서비스 동기화 성공: " + email);
+            }
+        } catch (Exception e) {
+            // 이미 존재하는 사용자일 수 있으므로 오류 무시
+            System.err.println("유저 서비스 동기화 실패: " + e.getMessage());
+        }
+    }
+    
+    private boolean createKeycloakUser(CreateUserRequest request) {
+        try {
+            // 1. Service Account 토큰 획득
+            String tokenUrl = keycloakServerUrl + "/realms/" + realm + "/protocol/openid-connect/token";
+            
+            HttpHeaders tokenHeaders = new HttpHeaders();
+            tokenHeaders.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+            
+            MultiValueMap<String, String> tokenBody = new LinkedMultiValueMap<>();
+            tokenBody.add("grant_type", "client_credentials");
+            tokenBody.add("client_id", clientId);
+            tokenBody.add("client_secret", clientSecret);
+            
+            HttpEntity<MultiValueMap<String, String>> tokenEntity = new HttpEntity<>(tokenBody, tokenHeaders);
+            ResponseEntity<Map> tokenResponse = restTemplate.postForEntity(tokenUrl, tokenEntity, Map.class);
+            
+            if (!tokenResponse.getStatusCode().is2xxSuccessful()) {
+                System.err.println("KeyCloak 서비스 계정 토큰 획득 실패");
+                return false;
+            }
+            
+            String accessToken = (String) tokenResponse.getBody().get("access_token");
+            
+            // 2. 사용자 생성
+            String usersUrl = keycloakServerUrl + "/admin/realms/" + realm + "/users";
+            
+            HttpHeaders userHeaders = new HttpHeaders();
+            userHeaders.setContentType(MediaType.APPLICATION_JSON);
+            userHeaders.setBearerAuth(accessToken);
+            
+            Map<String, Object> userRepresentation = new HashMap<>();
+            userRepresentation.put("username", request.getEmail());
+            userRepresentation.put("email", request.getEmail());
+            userRepresentation.put("enabled", true);
+            userRepresentation.put("emailVerified", false);
+            
+            // 사용자 생성
+            HttpEntity<Map<String, Object>> userEntity = new HttpEntity<>(userRepresentation, userHeaders);
+            ResponseEntity<Void> createResponse = restTemplate.postForEntity(usersUrl, userEntity, Void.class);
+            
+            if (!createResponse.getStatusCode().is2xxSuccessful()) {
+                System.err.println("KeyCloak 사용자 생성 실패");
+                return false;
+            }
+            
+            // 3. 비밀번호 설정 (생성된 사용자의 ID 필요)
+            // Location 헤더에서 사용자 ID 추출
+            String userLocation = createResponse.getHeaders().getLocation().toString();
+            String userId = userLocation.substring(userLocation.lastIndexOf('/') + 1);
+            
+            String passwordUrl = keycloakServerUrl + "/admin/realms/" + realm + "/users/" + userId + "/reset-password";
+            
+            Map<String, Object> passwordData = new HashMap<>();
+            passwordData.put("type", "password");
+            passwordData.put("value", request.getPassword());
+            passwordData.put("temporary", false);
+            
+            HttpEntity<Map<String, Object>> passwordEntity = new HttpEntity<>(passwordData, userHeaders);
+            restTemplate.exchange(passwordUrl, HttpMethod.PUT, passwordEntity, Void.class);
+            
+            System.out.println("KeyCloak 사용자 생성 성공: " + request.getEmail());
+            return true;
+            
+        } catch (Exception e) {
+            System.err.println("KeyCloak 사용자 생성 중 오류: " + e.getMessage());
+            return false;
+        }
+    }
+}

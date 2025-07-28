@@ -43,6 +43,22 @@ spec:
               name: gateway-secrets
               key: jwt-secret
         
+        # KeyCloak 설정
+        - name: KEYCLOAK_AUTH_SERVER_URL
+          value: "http://keycloak:8080"
+        
+        - name: KEYCLOAK_REALM
+          value: "sangsang-plus"
+        
+        - name: KEYCLOAK_CLIENT_ID
+          value: "gateway-client"
+        
+        - name: KEYCLOAK_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: gateway-secrets
+              key: keycloak-client-secret
+        
         # Google OAuth 설정 (선택사항)
         - name: GOOGLE_CLIENT_ID
           valueFrom:

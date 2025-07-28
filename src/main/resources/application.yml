@@ -29,11 +29,22 @@ spring:
               - email
               - profile
 
-# JWT Configuration
+# JWT Configuration (deprecated - using KeyCloak)
 jwt:
   secret: ${JWT_SECRET:mySecretKey}
   access-token-expiration: 3600000  # 1 hour in milliseconds
   refresh-token-expiration: 2592000000  # 30 days in milliseconds
+
+# KeyCloak Configuration
+keycloak:
+  auth-server-url: ${KEYCLOAK_AUTH_SERVER_URL:http://keycloak:8080}
+  realm: ${KEYCLOAK_REALM:sangsang-plus}
+  resource: ${KEYCLOAK_CLIENT_ID:gateway-client}
+  credentials:
+    secret: ${KEYCLOAK_CLIENT_SECRET:your-client-secret}
+  use-resource-role-mappings: true
+  bearer-only: true
+  ssl-required: none
 
 # Service URLs
 user-service:

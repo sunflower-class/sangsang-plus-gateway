@@ -110,6 +110,20 @@
             <artifactId>springdoc-openapi-security</artifactId>
             <version>1.7.0</version>
         </dependency>
+        
+        <!-- Keycloak Spring Boot Starter -->
+        <dependency>
+            <groupId>org.keycloak</groupId>
+            <artifactId>keycloak-spring-boot-starter</artifactId>
+            <version>22.0.5</version>
+        </dependency>
+        
+        <!-- Keycloak Spring Security Adapter -->
+        <dependency>
+            <groupId>org.keycloak</groupId>
+            <artifactId>keycloak-spring-security-adapter</artifactId>
+            <version>22.0.5</version>
+        </dependency>
     </dependencies>
     
     <dependencyManagement>

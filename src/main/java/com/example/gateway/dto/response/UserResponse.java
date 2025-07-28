@@ -1,18 +1,21 @@
 package com.example.gateway.dto.response;
 
 import java.time.LocalDateTime;
+import java.util.Set;
 
 public class UserResponse {
-    private Long id;
+    private String id;
+    private String username;
     private String email;
     private String name;
     private String role;
+    private Set<String> roles;
     private Boolean emailVerified;
     private LocalDateTime createdAt;
     
     public UserResponse() {}
     
-    public UserResponse(Long id, String email, String name, String role, Boolean emailVerified, LocalDateTime createdAt) {
+    public UserResponse(String id, String email, String name, String role, Boolean emailVerified, LocalDateTime createdAt) {
         this.id = id;
         this.email = email;
         this.name = name;
@@ -21,12 +24,28 @@ public class UserResponse {
         this.createdAt = createdAt;
     }
     
-    public Long getId() { 
+    public String getId() { 
         return id; 
     }
     
-    public void setId(Long id) { 
+    public void setId(String id) { 
         this.id = id; 
+    }
+    
+    public String getUsername() { 
+        return username; 
+    }
+    
+    public void setUsername(String username) { 
+        this.username = username; 
+    }
+    
+    public Set<String> getRoles() { 
+        return roles; 
+    }
+    
+    public void setRoles(Set<String> roles) { 
+        this.roles = roles; 
     }
     
     public String getEmail() { 

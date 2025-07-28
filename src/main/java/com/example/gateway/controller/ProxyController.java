@@ -1,5 +1,6 @@
 package com.example.gateway.controller;
 
+import com.example.gateway.service.KeycloakService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -10,6 +11,7 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 import org.slf4j.Logger;
@@ -30,6 +32,9 @@ public class ProxyController {
     @Autowired
     private RestTemplate restTemplate;
     
+    @Autowired
+    private KeycloakService keycloakService;
+    
     @Value("${user-service.url}")
     private String userServiceUrl;
 
@@ -40,7 +45,8 @@ public class ProxyController {
     @RequestMapping(value = "/users/**", method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE})
     @Operation(summary = "Proxy to User Service", description = "Forward requests to User Service for user management operations")
     @ApiResponse(responseCode = "200", description = "Request forwarded successfully")
-    @SecurityRequirement(name = "cookieAuth")
+    @SecurityRequirement(name = "keycloak")
+    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<?> proxyToUserService(
             HttpServletRequest request,
             @RequestBody(required = false) Object body) {
@@ -51,19 +57,26 @@ public class ProxyController {
         // 원본 헤더 복사
         HttpHeaders headers = new HttpHeaders();
         
-        // Authorization 헤더 복사
-        String authHeader = request.getHeader("Authorization");
-        if (authHeader != null) {
-            headers.set("Authorization", authHeader);
-        }
-        
-        // 쿠키에서 JWT 토큰 추출 및 Authorization 헤더로 변환
-        Cookie[] cookies = request.getCookies();
-        if (cookies != null && authHeader == null) {
-            for (Cookie cookie : cookies) {
-                if ("access_token".equals(cookie.getName())) {
-                    headers.set("Authorization", "Bearer " + cookie.getValue());
-                    break;
+        // KeyCloak 토큰을 Authorization 헤더로 전달
+        String keycloakToken = keycloakService.getAccessToken();
+        if (keycloakToken != null) {
+            headers.set("Authorization", "Bearer " + keycloakToken);
+            logger.info("[USER PROXY] Using KeyCloak token for user: {}", keycloakService.getCurrentUsername());
+        } else {
+            // Fallback: 기존 JWT 토큰 처리
+            String authHeader = request.getHeader("Authorization");
+            if (authHeader != null) {
+                headers.set("Authorization", authHeader);
+            }
+            
+            // 쿠키에서 JWT 토큰 추출 및 Authorization 헤더로 변환
+            Cookie[] cookies = request.getCookies();
+            if (cookies != null && authHeader == null) {
+                for (Cookie cookie : cookies) {
+                    if ("access_token".equals(cookie.getName())) {
+                        headers.set("Authorization", "Bearer " + cookie.getValue());
+                        break;
+                    }
                 }
             }
         }
@@ -103,7 +116,8 @@ public class ProxyController {
     @RequestMapping(value = "/products/**", method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE})
     @Operation(summary = "Proxy to Product Service", description = "Forward requests to Product Service for Product management operations")
     @ApiResponse(responseCode = "200", description = "Request forwarded successfully")
-    @SecurityRequirement(name = "cookieAuth")
+    @SecurityRequirement(name = "keycloak")
+    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<?> proxyToProductService(
             HttpServletRequest request,
             @RequestBody(required = false) Object body) {
@@ -116,28 +130,35 @@ public class ProxyController {
         // 원본 헤더 복사
         HttpHeaders headers = new HttpHeaders();
         
-        // Authorization 헤더 복사
-        String authHeader = request.getHeader("Authorization");
-        if (authHeader != null) {
-            headers.set("Authorization", authHeader);
-            logger.info("[PRODUCT PROXY] Using Authorization header: Bearer ***[{}]***", authHeader.substring(0, Math.min(20, authHeader.length())));
-        }
-        
-        // 쿠키에서 JWT 토큰 추출 및 Authorization 헤더로 변환
-        Cookie[] cookies = request.getCookies();
-        if (cookies != null && authHeader == null) {
-            for (Cookie cookie : cookies) {
-                if ("access_token".equals(cookie.getName())) {
-                    String token = cookie.getValue();
-                    headers.set("Authorization", "Bearer " + token);
-                    logger.info("[PRODUCT PROXY] Using cookie token: Bearer ***[{}]***", token.substring(0, Math.min(20, token.length())));
-                    break;
+        // KeyCloak 토큰을 Authorization 헤더로 전달
+        String keycloakToken = keycloakService.getAccessToken();
+        if (keycloakToken != null) {
+            headers.set("Authorization", "Bearer " + keycloakToken);
+            logger.info("[PRODUCT PROXY] Using KeyCloak token for user: {}", keycloakService.getCurrentUsername());
+        } else {
+            // Fallback: 기존 JWT 토큰 처리
+            String authHeader = request.getHeader("Authorization");
+            if (authHeader != null) {
+                headers.set("Authorization", authHeader);
+                logger.info("[PRODUCT PROXY] Using Authorization header: Bearer ***[{}]***", authHeader.substring(0, Math.min(20, authHeader.length())));
+            }
+            
+            // 쿠키에서 JWT 토큰 추출 및 Authorization 헤더로 변환
+            Cookie[] cookies = request.getCookies();
+            if (cookies != null && authHeader == null) {
+                for (Cookie cookie : cookies) {
+                    if ("access_token".equals(cookie.getName())) {
+                        String token = cookie.getValue();
+                        headers.set("Authorization", "Bearer " + token);
+                        logger.info("[PRODUCT PROXY] Using cookie token: Bearer ***[{}]***", token.substring(0, Math.min(20, token.length())));
+                        break;
+                    }
                 }
             }
-        }
-        
-        if (authHeader == null && (cookies == null || cookies.length == 0)) {
-            logger.warn("[PRODUCT PROXY] No Authorization header or access_token cookie found!");
+            
+            if (authHeader == null && (cookies == null || cookies.length == 0)) {
+                logger.warn("[PRODUCT PROXY] No Authorization header or access_token cookie found!");
+            }
         }
         
         // 기타 필요한 헤더들 복사
