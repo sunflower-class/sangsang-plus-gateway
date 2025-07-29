@@ -339,57 +339,6 @@ public class KeycloakAuthController {
         ));
     }
 
-    @PostMapping("/social-login/{provider}")
-    public ResponseEntity<AuthResponse> socialLogin(
-            @PathVariable String provider,
-            @RequestBody Map<String, String> request) {
-        try {
-            String code = request.get("code");
-            String redirectUri = request.get("redirect_uri");
-            
-            if (code == null || redirectUri == null) {
-                return ResponseEntity.badRequest()
-                    .body(new AuthResponse(false, "code와 redirect_uri가 필요합니다", null, null, null));
-            }
-
-            // KeyCloak 소셜 로그인 토큰 교환
-            String tokenUrl = keycloakServerUrl + "/realms/" + realm + "/protocol/openid-connect/token";
-            
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-
-            MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
-            body.add("grant_type", "authorization_code");
-            body.add("client_id", clientId);
-            body.add("client_secret", clientSecret);
-            body.add("code", code);
-            body.add("redirect_uri", redirectUri);
-
-            HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(body, headers);
-            ResponseEntity<Map> response = restTemplate.postForEntity(tokenUrl, entity, Map.class);
-
-            if (response.getStatusCode() == HttpStatus.OK) {
-                Map<String, Object> tokenResponse = response.getBody();
-                
-                // 소셜 로그인 성공 시 유저 정보 동기화
-                syncSocialLoginUser(provider, (String) tokenResponse.get("access_token"));
-                
-                return ResponseEntity.ok(new AuthResponse(
-                    true,
-                    provider + " 소셜 로그인 성공",
-                    (String) tokenResponse.get("access_token"),
-                    (String) tokenResponse.get("refresh_token"),
-                    (Integer) tokenResponse.get("expires_in")
-                ));
-            }
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(new AuthResponse(false, provider + " 소셜 로그인 실패: " + e.getMessage(), null, null, null));
-        }
-
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-            .body(new AuthResponse(false, provider + " 소셜 로그인 실패", null, null, null));
-    }
 
     @GetMapping("/test")
     public ResponseEntity<Map<String, String>> test() {
