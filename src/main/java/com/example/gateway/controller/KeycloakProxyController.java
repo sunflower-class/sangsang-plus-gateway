@@ -63,14 +63,22 @@ public class KeycloakProxyController {
             response.getHeaders().forEach((key, value) -> {
                 if (!key.equalsIgnoreCase("content-encoding") && 
                     !key.equalsIgnoreCase("content-length") &&
-                    !key.equalsIgnoreCase("transfer-encoding")) {
+                    !key.equalsIgnoreCase("transfer-encoding") &&
+                    !key.equalsIgnoreCase("vary") &&
+                    !key.equalsIgnoreCase("x-frame-options")) {
                     responseHeaders.put(key, value);
                 }
             });
             
+            // Explicitly set content length for proper handling
+            byte[] responseBody = response.getBody();
+            if (responseBody != null) {
+                responseHeaders.setContentLength(responseBody.length);
+            }
+            
             return ResponseEntity.status(response.getStatusCode())
                     .headers(responseHeaders)
-                    .body(response.getBody());
+                    .body(responseBody);
                     
         } catch (Exception e) {
             return ResponseEntity.badRequest()

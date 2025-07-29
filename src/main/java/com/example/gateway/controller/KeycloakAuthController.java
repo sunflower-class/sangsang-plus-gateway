@@ -75,7 +75,11 @@ public class KeycloakAuthController {
             }
             
             // 2. KeyCloak에 사용자 생성 (필수)
-            if (!createKeycloakUser(request)) {
+            String keycloakResult = createKeycloakUser(request);
+            if (keycloakResult.equals("USER_EXISTS")) {
+                return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(new AuthResponse(false, "USER_ALREADY_EXISTS", null, null, null));
+            } else if (!keycloakResult.equals("SUCCESS")) {
                 return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(new AuthResponse(false, "KEYCLOAK_REGISTRATION_FAILED", null, null, null));
             }
@@ -474,7 +478,7 @@ public class KeycloakAuthController {
         }
     }
     
-    private boolean createKeycloakUser(CreateUserRequest request) {
+    private String createKeycloakUser(CreateUserRequest request) {
         try {
             // 1. Service Account 토큰 획득
             String tokenUrl = keycloakServerUrl + "/realms/" + realm + "/protocol/openid-connect/token";
@@ -492,7 +496,7 @@ public class KeycloakAuthController {
             
             if (!tokenResponse.getStatusCode().is2xxSuccessful()) {
                 System.err.println("KeyCloak 서비스 계정 토큰 획득 실패");
-                return false;
+                return "TOKEN_FAILED";
             }
             
             String accessToken = (String) tokenResponse.getBody().get("access_token");
@@ -516,7 +520,7 @@ public class KeycloakAuthController {
             
             if (!createResponse.getStatusCode().is2xxSuccessful()) {
                 System.err.println("KeyCloak 사용자 생성 실패");
-                return false;
+                return "CREATE_FAILED";
             }
             
             // 3. 비밀번호 설정 (생성된 사용자의 ID 필요)
@@ -535,11 +539,19 @@ public class KeycloakAuthController {
             restTemplate.exchange(passwordUrl, HttpMethod.PUT, passwordEntity, Void.class);
             
             System.out.println("KeyCloak 사용자 생성 성공: " + request.getEmail());
-            return true;
+            return "SUCCESS";
             
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() == HttpStatus.CONFLICT) {
+                System.err.println("중복 사용자 감지: " + request.getEmail());
+                return "USER_EXISTS";
+            } else {
+                System.err.println("KeyCloak 클라이언트 오류: " + e.getStatusCode() + " - " + e.getMessage());
+                return "CLIENT_ERROR";
+            }
         } catch (Exception e) {
             System.err.println("KeyCloak 사용자 생성 중 오류: " + e.getMessage());
-            return false;
+            return "UNKNOWN_ERROR";
         }
     }
 }

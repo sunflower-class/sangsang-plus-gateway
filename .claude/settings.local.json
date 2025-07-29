@@ -20,7 +20,9 @@
       "Bash(kubectl get:*)",
       "Bash(kubectl describe:*)",
       "Bash(docker tag:*)",
-      "Bash(kubectl set image:*)"
+      "Bash(kubectl set image:*)",
+      "Bash(pkill:*)",
+      "Bash(true)"
     ],
     "deny": []
   }

@@ -17,7 +17,7 @@ spec:
       containers:
       - name: keycloak
         image: quay.io/keycloak/keycloak:22.0.5
-        args: ["start"]  # 프로덕션 모드
+        args: ["start-dev"]  # 개발 모드
         env:
         - name: KEYCLOAK_ADMIN
           value: "admin"
@@ -26,9 +26,6 @@ spec:
             secretKeyRef:
               name: keycloak-secrets
               key: admin-password
-        - name: QUARKUS_HTTP_ENABLE_COMPRESSION
-          value: "false"
-        # Azure PostgreSQL 연결 설정
         - name: KC_DB
           value: "postgres"
         - name: KC_DB_URL
@@ -40,49 +37,20 @@ spec:
             secretKeyRef:
               name: keycloak-secrets
               key: azure-db-password
-        # 프로덕션 설정
-        - name: KC_HOSTNAME
-          value: "oauth.buildingbite.com"
+        # - name: KC_HOSTNAME
+        #   value: "oauth.buildingbite.com"
         - name: KC_HOSTNAME_STRICT
-          value: "false"
-        - name: KC_HOSTNAME_STRICT_HTTPS
           value: "false"
         - name: KC_HTTP_ENABLED
           value: "true"
         - name: KC_PROXY
-          value: "edge"  # 리버스 프록시 뒤에 있을 때
-        - name: KC_HEALTH_ENABLED
-          value: "true"
-        - name: KC_METRICS_ENABLED
-          value: "true"
+          value: "edge"
+        - name: KC_HTTP_HEADER_X_FRAME_OPTIONS
+          value: "ALLOW-FROM https://oauth.buildingbite.com"
+        - name: KC_HTTP_HEADER_CONTENT_SECURITY_POLICY
+          value: "frame-ancestors 'self' https://oauth.buildingbite.com"
         ports:
-        - name: http
-          containerPort: 8080
-        - name: https
-          containerPort: 8443
-        readinessProbe:
-          httpGet:
-            path: /health/ready
-            port: 8080
-          initialDelaySeconds: 30
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3
-        livenessProbe:
-          httpGet:
-            path: /health/live
-            port: 8080
-          initialDelaySeconds: 60
-          periodSeconds: 30
-          timeoutSeconds: 5
-          failureThreshold: 3
-        resources:
-          requests:
-            memory: "512Mi"
-            cpu: "500m"
-          limits:
-            memory: "1Gi"
-            cpu: "1000m"
+        - containerPort: 8080
 ---
 apiVersion: v1
 kind: Service
@@ -98,13 +66,4 @@ spec:
       protocol: TCP
       port: 8080
       targetPort: 8080
-    - name: https
-      protocol: TCP
-      port: 8443
-      targetPort: 8443
   type: ClusterIP
----
-# Secret 생성 명령어:
-# kubectl create secret generic keycloak-secrets \
-#   --from-literal=admin-password='strong-admin-password' \
-#   --from-literal=azure-db-password='your-azure-db-password'
