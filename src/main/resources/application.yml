@@ -28,6 +28,9 @@ spring:
             scope:
               - email
               - profile
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://keycloak:8080/realms/sangsang-plus}
 
 # JWT Configuration (deprecated - using KeyCloak)
 jwt:
@@ -46,6 +49,7 @@ keycloak:
   bearer-only: true
   ssl-required: none
 
+
 # Service URLs
 user-service:
   url: ${USER_SERVICE_URL:http://user-service}
@@ -62,7 +66,6 @@ app:
 logging:
   level:
     com.example.gateway: DEBUG
-    org.springframework.security: DEBUG
-    org.springframework.security.oauth2: DEBUG
-    org.springframework.security.web: DEBUG
-    org.springframework.web.cors: DEBUG
+    org.springframework.security: INFO
+    org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping: DEBUG
+    org.springframework.context.annotation: DEBUG

@@ -46,7 +46,7 @@ CREATE DATABASE keycloak_db;
 ```bash
 kubectl create secret generic keycloak-secrets \
   --from-literal=admin-password='password123!' \
-  --from-literal=azure-db-password='password123!'
+  --from-file=azure-db-password='ekdma1443!'
 ```
 
 ### 2.2 배포 매니페스트 수정

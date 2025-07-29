@@ -1,18 +1,28 @@
 package com.example.gateway.dto.response;
 
 public class AuthResponse {
+    private boolean success;
     private String message;
     private String token;
     private String refreshToken;
     private UserResponse user;
-    private Long expiresIn;
+    private Integer expiresIn;
     
     public AuthResponse() {}
     
     public AuthResponse(String token, String refreshToken, UserResponse user, Long expiresIn) {
+        this.success = true;
         this.token = token;
         this.refreshToken = refreshToken;
         this.user = user;
+        this.expiresIn = expiresIn != null ? expiresIn.intValue() : null;
+    }
+    
+    public AuthResponse(boolean success, String message, String token, String refreshToken, Integer expiresIn) {
+        this.success = success;
+        this.message = message;
+        this.token = token;
+        this.refreshToken = refreshToken;
         this.expiresIn = expiresIn;
     }
     
@@ -57,11 +67,19 @@ public class AuthResponse {
         this.user = user; 
     }
     
-    public Long getExpiresIn() { 
+    public Integer getExpiresIn() { 
         return expiresIn; 
     }
     
-    public void setExpiresIn(Long expiresIn) { 
+    public void setExpiresIn(Integer expiresIn) { 
         this.expiresIn = expiresIn; 
+    }
+    
+    public boolean isSuccess() {
+        return success;
+    }
+    
+    public void setSuccess(boolean success) {
+        this.success = success;
     }
 }

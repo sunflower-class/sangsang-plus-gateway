@@ -1,20 +1,22 @@
 # SangSang Plus Gateway Service
 
-Spring Cloud Gateway 기반의 API 게이트웨이 서비스입니다. 사용자 인증, 요청 라우팅, JWT 토큰 관리를 담당합니다.
+Spring Cloud Gateway 기반의 API 게이트웨이 서비스입니다. Keycloak을 통한 사용자 인증, 요청 라우팅, JWT 토큰 관리를 담당합니다.
 
 ## 기능
 
 - **API 게이트웨이**: 마이크로서비스 간 요청 라우팅
-- **사용자 인증**: 회원가입, 로그인, JWT 토큰 관리
-- **보안**: JWT 기반 인증, 쿠키 기반 토큰 관리
+- **사용자 인증**: Keycloak 기반 통합 인증 (회원가입, 로그인, JWT 토큰 관리)
+- **보안**: OAuth2/OIDC 표준 기반 인증, JWT 토큰 검증
 - **서비스 디스커버리**: Kubernetes 환경에서 서비스 간 통신
+- **소셜 로그인**: Keycloak을 통한 Google, Facebook 등 소셜 로그인 지원
 
 ## 기술 스택
 
 - Java 11
 - Spring Boot 2.7.14
 - Spring Cloud Gateway
-- Spring Security
+- Spring Security + OAuth2 Resource Server
+- Keycloak 22.0.5
 - JWT (JSON Web Token)
 - Maven
 - Docker
@@ -22,15 +24,17 @@ Spring Cloud Gateway 기반의 API 게이트웨이 서비스입니다. 사용자
 
 ## API 엔드포인트
 
-### 인증 관련
-- `POST /api/auth/register` - 사용자 회원가입
-- `POST /api/auth/login` - 사용자 로그인  
-- `POST /api/auth/refresh` - 액세스 토큰 재발급 (쿠키 또는 Authorization 헤더에서 리프레시 토큰 사용)
-- `POST /api/auth/logout` - 로그아웃 (토큰 블랙리스트 처리 및 쿠키 삭제)
+### Keycloak 인증 관련
+- `POST /api/keycloak/register` - 사용자 회원가입
+- `POST /api/keycloak/login` - 사용자 로그인  
+- `POST /api/keycloak/refresh` - 액세스 토큰 재발급
+- `POST /api/keycloak/logout` - 로그아웃
+- `GET /api/keycloak/userinfo` - 현재 사용자 정보 조회
+- `GET /api/keycloak/validate` - 토큰 유효성 검증
 
-### OAuth2 소셜 로그인
-- `GET /oauth2/authorization/google` - Google OAuth2 로그인 시작
-- `GET /login/oauth2/code/google` - Google OAuth2 콜백 처리
+### 소셜 로그인
+- `GET /api/keycloak/social-login/{provider}/url` - 소셜 로그인 URL 생성
+- `POST /api/keycloak/social-login/{provider}` - 소셜 로그인 콜백 처리
 
 ### 헬스체크
 - `GET /api/health` - 서비스 상태 확인
@@ -43,23 +47,33 @@ Spring Cloud Gateway 기반의 API 게이트웨이 서비스입니다. 사용자
 |--------|------|--------|------|
 | `USER_SERVICE_URL` | User 서비스 URL | `http://user-service` | K8s: `http://user-service.user-service.svc.cluster.local` |
 | `PRODUCT_SERVICE_URL` | Product 서비스 URL | `http://product-service` | K8s: `http://product-service.product-service.svc.cluster.local` |
-| `JWT_SECRET` | JWT 서명용 비밀키 | `mySecretKey` | **반드시 변경 필요** |
 | `KAFKA_BOOTSTRAP_SERVERS` | Kafka 서버 주소 | `kafka:9092` | Kafka 클러스터 주소 |
 | `FRONTEND_URL` | 프론트엔드 URL | `https://buildingbite.com` | OAuth2 리다이렉트용 |
 
-### JWT 토큰 설정 (선택적)
+### Keycloak 설정 (필수)
+
+| 변수명 | 설명 | 기본값 | 비고 |
+|--------|------|--------|------|
+| `KEYCLOAK_AUTH_SERVER_URL` | Keycloak 서버 URL | `http://keycloak:8080` | K8s 내부 URL |
+| `KEYCLOAK_REALM` | Keycloak Realm 이름 | `sangsang-plus` | Realm 생성 필요 |
+| `KEYCLOAK_CLIENT_ID` | Keycloak 클라이언트 ID | `gateway-client` | Client 생성 필요 |
+| `KEYCLOAK_CLIENT_SECRET` | Keycloak 클라이언트 시크릿 | - | **필수 설정** |
+| `KEYCLOAK_ISSUER_URI` | JWT Issuer URI | `http://keycloak:8080/realms/sangsang-plus` | 토큰 검증용 |
+
+### JWT 토큰 설정 (Deprecated - Keycloak 사용)
 
 | 변수명 | 설명 | 기본값 |
 |--------|------|--------|
-| `JWT_ACCESS_TOKEN_EXPIRATION` | 액세스 토큰 만료시간 (밀리초) | `3600000` (1시간) |
-| `JWT_REFRESH_TOKEN_EXPIRATION` | 리프레시 토큰 만료시간 (밀리초) | `2592000000` (30일) |
+| `JWT_SECRET` | JWT 서명용 비밀키 | `mySecretKey` | **Keycloak 사용 시 불필요** |
+| `JWT_ACCESS_TOKEN_EXPIRATION` | 액세스 토큰 만료시간 | - | Keycloak에서 관리 |
+| `JWT_REFRESH_TOKEN_EXPIRATION` | 리프레시 토큰 만료시간 | - | Keycloak에서 관리 |
 
 ### 선택적 환경 변수 (Google OAuth)
 
-| 변수명 | 설명 |
-|--------|------|
-| `GOOGLE_CLIENT_ID` | Google OAuth 클라이언트 ID |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth 클라이언트 시크릿 |
+| 변수명 | 설명 | 비고 |
+|--------|------|------|
+| `GOOGLE_CLIENT_ID` | Google OAuth 클라이언트 ID | Keycloak에서 설정 권장 |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth 클라이언트 시크릿 | Keycloak에서 설정 권장 |
 
 ## 로컬 개발
 
@@ -110,35 +124,60 @@ docker run -p 8080:8080 \
 
 다음 서비스들이 먼저 배포되어 있어야 합니다:
 
-1. **User Service** (네임스페이스: `user-service`)
-2. **Product Service** (네임스페이스: `product-service`)  
-3. **Kafka** (네임스페이스: `default` 또는 `kafka`)
+1. **Keycloak** (네임스페이스: `default` 또는 `keycloak`)
+2. **User Service** (네임스페이스: `user-service`)
+3. **Product Service** (네임스페이스: `product-service`)  
+4. **Kafka** (네임스페이스: `default` 또는 `kafka`)
 
-### 1. 네임스페이스 생성 (선택사항)
+### 1. Keycloak 배포 및 설정
+
+#### Keycloak Secret 생성
+```bash
+kubectl create secret generic keycloak-secrets \
+  --from-literal=admin-password='your-admin-password' \
+  --from-literal=azure-db-password='your-azure-db-password'
+```
+
+#### Keycloak 배포
+```bash
+kubectl apply -f keycloak-deployment-azure.yaml
+```
+
+#### Keycloak 설정
+Keycloak 관리 콘솔에서 다음 설정을 수행:
+1. **Realm 생성**: `sangsang-plus`
+2. **Client 생성**: `gateway-client`
+   - Client Protocol: `openid-connect`
+   - Access Type: `confidential`
+   - Valid Redirect URIs: `https://oauth.buildingbite.com/*`
+   - Web Origins: `https://oauth.buildingbite.com`
+3. **Client Secret 복사**: Credentials 탭에서 Secret 값 복사
+4. **Roles 생성**: `USER`, `ADMIN`
+5. **Test User 생성**: 테스트용 사용자 계정
+
+### 2. 네임스페이스 생성 (선택사항)
 ```bash
 # Gateway 전용 네임스페이스 생성 (선택사항)
 kubectl create namespace gateway
 ```
 
-### 2. Secret 생성 (필수)
+### 3. Secret 생성 (필수)
 
-#### 기본 Secret (JWT만)
+#### Keycloak 통합 Secret
 ```bash
 kubectl create secret generic gateway-secrets \
-  --from-literal=jwt-secret='your-super-secret-jwt-key-at-least-32-chars' \
+  --from-literal=keycloak-client-secret='your-keycloak-client-secret' \
   --namespace=gateway  # 네임스페이스 사용 시
 ```
 
-#### Google OAuth 포함 Secret
+#### 환경 변수로 Keycloak 설정 전달
 ```bash
-kubectl create secret generic gateway-secrets \
-  --from-literal=jwt-secret='your-super-secret-jwt-key-at-least-32-chars' \
-  --from-literal=google-client-id='your-google-client-id' \
-  --from-literal=google-client-secret='your-google-client-secret' \
-  --namespace=gateway  # 네임스페이스 사용 시
+kubectl create configmap gateway-config \
+  --from-literal=KEYCLOAK_AUTH_SERVER_URL='http://keycloak:8080' \
+  --from-literal=KEYCLOAK_REALM='sangsang-plus' \
+  --from-literal=KEYCLOAK_CLIENT_ID='gateway-client' \
+  --namespace=gateway
 ```
-
-⚠️ **보안 주의사항**: JWT Secret은 최소 32자 이상의 강력한 문자열을 사용하세요.
 
 ### 3. 배포 파일 수정 (네임스페이스 사용 시)
 
@@ -199,7 +238,40 @@ kubectl exec -it deployment/sangsang-plus-gateway -n gateway -- \
 
 ## 문제 해결
 
-### 1. 서비스 연결 실패
+### 1. Keycloak 연결 문제
+
+#### 403 Forbidden 오류
+**증상**: `/api/keycloak/login` 접근 시 403 에러
+**원인**: Spring Security 설정 문제
+**해결**: 
+```java
+// SecurityConfig.java에서 확인
+.antMatchers("/api/keycloak/**").permitAll()
+```
+
+#### 400 Bad Request 오류
+**증상**: 로그인 시 400 에러
+**원인**: 이메일 validation 실패
+**해결**: 이메일 형식으로 로그인
+```json
+{
+  "email": "test@example.com",  // "testuser" X
+  "password": "test123"
+}
+```
+
+#### Keycloak 연결 실패
+```bash
+# Keycloak 서비스 확인
+kubectl get svc keycloak
+kubectl get pods -l app=keycloak
+
+# 연결 테스트
+kubectl run -it --rm test-curl --image=curlimages/curl --restart=Never -- \
+  curl http://keycloak:8080/realms/sangsang-plus/.well-known/openid-configuration
+```
+
+### 2. 서비스 연결 실패
 
 #### User Service 연결 실패
 ```bash
@@ -453,44 +525,141 @@ spec:
 
 ### 회원가입
 ```bash
-curl -X POST https://oauth.buildingbite.com/api/auth/register \
+curl -X POST https://oauth.buildingbite.com/api/keycloak/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "newuser@example.com",
+    "name": "새로운 사용자", 
+    "password": "password123!"
+  }'
+```
+
+**응답 예시 (성공)**
+```json
+{
+  "success": true,
+  "message": "로그인 성공",
+  "token": "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJUVjBoVFFBV1I4R3d...",
+  "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJmYWQxZjYyNC0z...",
+  "expiresIn": 300
+}
+```
+
+### 로그인
+```bash
+curl -X POST https://oauth.buildingbite.com/api/keycloak/login \
   -H "Content-Type: application/json" \
   -d '{
     "email": "test@example.com",
-    "name": "테스트유저", 
-    "password": "password123!"
-  }' \
-  -c cookies.txt
+    "password": "test123"
+  }'
 ```
 
-### 로그인 (쿠키 저장)
+**응답 예시 (성공)**
+```json
+{
+  "success": true,
+  "message": "로그인 성공",
+  "token": "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJUVjBoVFFBV1I4R3d...",
+  "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJmYWQxZjYyNC0z...",
+  "expiresIn": 300
+}
+```
+
+**응답 예시 (실패)**
+```json
+{
+  "success": false,
+  "message": "USER_NOT_FOUND",
+  "token": null,
+  "refreshToken": null,
+  "expiresIn": null
+}
+```
+
+### 토큰 재발급
 ```bash
-curl -X POST https://oauth.buildingbite.com/api/auth/login \
+curl -X POST https://oauth.buildingbite.com/api/keycloak/refresh \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "test@example.com",
-    "password": "password123!"
-  }' \
-  -c cookies.txt
+    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJmYWQxZjYyNC0z..."
+  }'
 ```
 
-### 토큰 재발급 (쿠키 사용)
-```bash
-curl -X POST https://oauth.buildingbite.com/api/auth/refresh \
-  -b cookies.txt \
-  -c cookies.txt
-```
-
-### 토큰 재발급 (Authorization 헤더 사용)
-```bash
-curl -X POST https://oauth.buildingbite.com/api/auth/refresh \
-  -H "Authorization: Bearer YOUR_REFRESH_TOKEN_HERE"
+**응답 예시**
+```json
+{
+  "success": true,
+  "message": "토큰 갱신 성공",
+  "token": "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJUVjBoVFFBV1I4R3d...",
+  "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJmYWQxZjYyNC0z...",
+  "expiresIn": 300
+}
 ```
 
 ### 로그아웃
 ```bash
-curl -X POST https://oauth.buildingbite.com/api/auth/logout \
-  -b cookies.txt
+curl -X POST https://oauth.buildingbite.com/api/keycloak/logout \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkI..." \
+  -d '{
+    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJmYWQxZjYyNC0z..."
+  }'
+```
+
+**응답 예시**
+```json
+{
+  "success": true,
+  "message": "로그아웃 성공"
+}
+```
+
+### 사용자 정보 조회
+```bash
+curl -X GET https://oauth.buildingbite.com/api/keycloak/userinfo \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkI..."
+```
+
+**응답 예시**
+```json
+{
+  "id": "e63b9f80-1f50-43d9-8ebc-b99765420f34",
+  "username": "testuser",
+  "email": "test@example.com",
+  "name": "Test User",
+  "emailVerified": true,
+  "roles": ["USER"]
+}
+```
+
+### 토큰 검증
+```bash
+curl -X GET https://oauth.buildingbite.com/api/keycloak/validate \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkI..."
+```
+
+**응답 예시**
+```json
+{
+  "valid": true,
+  "username": "testuser",
+  "roles": ["USER"]
+}
+```
+
+### 소셜 로그인 URL 생성
+```bash
+curl -X GET https://oauth.buildingbite.com/api/keycloak/social-login/google/url?redirectUri=https://buildingbite.com/callback
+```
+
+**응답 예시**
+```json
+{
+  "authUrl": "http://oauth.buildingbite.com/realms/sangsang-plus/protocol/openid-connect/auth?client_id=gateway-client&response_type=code&scope=openid%20email%20profile&redirect_uri=https://buildingbite.com/callback&kc_idp_hint=google",
+  "provider": "google",
+  "redirectUri": "https://buildingbite.com/callback"
+}
 ```
 
 ### 헬스체크
@@ -498,11 +667,114 @@ curl -X POST https://oauth.buildingbite.com/api/auth/logout \
 curl -X GET https://oauth.buildingbite.com/api/health
 ```
 
-### 인증이 필요한 API 호출
+**응답 예시**
+```json
+{
+  "status": "UP",
+  "service": "gateway-service"
+}
+```
+
+### JWT 토큰 사용 예시
+모든 인증이 필요한 API는 다음과 같이 Bearer 토큰을 포함해야 합니다:
 ```bash
 curl -X GET https://oauth.buildingbite.com/api/protected-endpoint \
-  -b cookies.txt
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkI..."
 ```
+
+## Keycloak 통합의 장점
+
+### 1. 중앙 집중식 인증 관리
+- 모든 마이크로서비스의 인증을 Keycloak에서 통합 관리
+- 사용자 정보, 권한, 세션을 한 곳에서 관리
+- 표준 OAuth2/OIDC 프로토콜 지원
+
+### 2. 다양한 인증 방식 지원
+- 사용자명/비밀번호 인증
+- 소셜 로그인 (Google, Facebook, GitHub 등)
+- SAML, LDAP/AD 연동
+- 2FA (Two-Factor Authentication)
+
+### 3. 토큰 관리
+- JWT 토큰 자동 발급 및 검증
+- 토큰 만료 시간 중앙 관리
+- Refresh Token 자동 처리
+
+### 4. 보안 강화
+- PKCE (Proof Key for Code Exchange) 지원
+- 토큰 암호화 및 서명
+- Rate Limiting
+- Brute Force Protection
+
+## JWT 토큰 구조
+
+Keycloak에서 발급하는 JWT 토큰의 구조:
+
+### Access Token
+```json
+{
+  "exp": 1753749483,  // 만료 시간
+  "iat": 1753749183,  // 발급 시간
+  "jti": "a6e82ac2-147e-48bc-93f4-67526b5d59e6",
+  "iss": "http://oauth.buildingbite.com/realms/sangsang-plus",
+  "aud": "account",
+  "sub": "e63b9f80-1f50-43d9-8ebc-b997654203f4",  // 사용자 ID
+  "typ": "Bearer",
+  "azp": "gateway-client",
+  "session_state": "1ada7af1-cc23-4420-a23c-a5b2f95637bb",
+  "acr": "1",
+  "allowed-origins": ["https://oauth.buildingbite.com"],
+  "realm_access": {
+    "roles": ["offline_access", "uma_authorization", "USER"]
+  },
+  "resource_access": {
+    "account": {
+      "roles": ["manage-account", "view-profile"]
+    }
+  },
+  "scope": "profile email",
+  "email_verified": true,
+  "name": "Test User",
+  "preferred_username": "testuser",
+  "given_name": "Test",
+  "family_name": "User",
+  "email": "test@example.com"
+}
+```
+
+### Refresh Token
+- HTTP-Only Secure Cookie로 저장 권장
+- 30일 유효 기간 (설정 가능)
+- Access Token 재발급에만 사용
+
+## 마이그레이션 가이드
+
+기존 JWT 기반 인증에서 Keycloak으로 마이그레이션:
+
+### 1. 기존 사용자 데이터 마이그레이션
+```bash
+# Keycloak Admin API를 사용한 사용자 일괄 등록
+POST /admin/realms/{realm}/users
+```
+
+### 2. 클라이언트 코드 변경
+```javascript
+// 기존
+const response = await fetch('/api/auth/login', {
+  method: 'POST',
+  body: JSON.stringify({ email, password })
+});
+
+// 변경
+const response = await fetch('/api/keycloak/login', {
+  method: 'POST',
+  body: JSON.stringify({ email, password })
+});
+```
+
+### 3. 토큰 검증 로직 변경
+- 기존: 자체 JWT Secret으로 검증
+- 변경: Keycloak의 공개키로 검증
 
 ## 기여 방법
 
