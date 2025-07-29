@@ -356,14 +356,18 @@ public class KeycloakAuthController {
             String authUrl = keycloakServerUrl + "/realms/" + realm + "/protocol/openid-connect/auth" +
                 "?client_id=" + clientId +
                 "&response_type=code" +
-                "&scope=openid email profile" +
-                "&redirect_uri=" + baseRedirectUri +
+                "&scope=openid+email+profile" +
+                "&redirect_uri=" + java.net.URLEncoder.encode(baseRedirectUri, "UTF-8") +
                 "&kc_idp_hint=" + provider;
+            
+            System.out.println("Redirecting to: " + authUrl);
             
             HttpHeaders headers = new HttpHeaders();
             headers.setLocation(java.net.URI.create(authUrl));
             return ResponseEntity.status(HttpStatus.FOUND).headers(headers).build();
         } catch (Exception e) {
+            System.err.println("Social login redirect error: " + e.getMessage());
+            e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
