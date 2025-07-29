@@ -12,9 +12,14 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 import javax.validation.Valid;
+import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -30,34 +35,49 @@ public class KeycloakAuthController {
     private String realm = "sangsang-plus";
     private String clientId = "gateway-client";
     private String clientSecret = "XQtlIuzXO3so9C536kY6HVFNgFSJVHHK";
-    private String userServiceUrl = "http://user-service";
+    private String userServiceUrl = "http://user-service.user-service.svc.cluster.local";
 
     private final RestTemplate restTemplate = new RestTemplate();
 
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(@Valid @RequestBody CreateUserRequest request) {
         try {
-            // 1. 먼저 유저 서비스에 사용자 생성
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            
-            HttpEntity<CreateUserRequest> entity = new HttpEntity<>(request, headers);
-            ResponseEntity<UserResponse> userResponse = restTemplate.postForEntity(
-                userServiceUrl + "/api/users",
-                entity,
-                UserResponse.class
-            );
-            
-            if (!userResponse.getStatusCode().is2xxSuccessful()) {
-                return ResponseEntity.badRequest()
-                    .body(new AuthResponse(false, "회원가입 실패: 유저 서비스 오류", null, null, null));
+            // 1. 먼저 유저 서비스에 사용자 생성 (옵셔널)
+            boolean userServiceSuccess = false;
+            try {
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_JSON);
+                
+                HttpEntity<CreateUserRequest> entity = new HttpEntity<>(request, headers);
+                ResponseEntity<UserResponse> userResponse = restTemplate.postForEntity(
+                    userServiceUrl + "/api/users",
+                    entity,
+                    UserResponse.class
+                );
+                
+                userServiceSuccess = userResponse.getStatusCode().is2xxSuccessful();
+                if (!userServiceSuccess) {
+                    System.err.println("User Service 사용자 생성 실패: " + userResponse.getStatusCode());
+                }
+            } catch (HttpClientErrorException e) {
+                if (e.getStatusCode() == HttpStatus.CONFLICT) {
+                    System.err.println("이미 존재하는 사용자: " + request.getEmail());
+                    return ResponseEntity.status(HttpStatus.CONFLICT)
+                        .body(new AuthResponse(false, "USER_ALREADY_EXISTS", null, null, null));
+                } else {
+                    System.err.println("User Service 클라이언트 오류: " + e.getMessage());
+                }
+            } catch (ResourceAccessException e) {
+                System.err.println("User Service 연결 실패 (서비스 없음): " + e.getMessage());
+                // User Service가 없어도 Keycloak 등록은 진행
+            } catch (Exception e) {
+                System.err.println("User Service 호출 중 오류: " + e.getMessage());
             }
             
-            // 2. KeyCloak에 사용자 생성
+            // 2. KeyCloak에 사용자 생성 (필수)
             if (!createKeycloakUser(request)) {
-                // KeyCloak 생성 실패해도 유저 서비스에는 이미 생성됨
-                // 로그인은 시도해볼 수 있음
-                System.err.println("KeyCloak 사용자 생성 실패, 하지만 계속 진행");
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new AuthResponse(false, "KEYCLOAK_REGISTRATION_FAILED", null, null, null));
             }
             
             // 3. 생성된 계정으로 자동 로그인
@@ -65,11 +85,19 @@ public class KeycloakAuthController {
             loginRequest.setEmail(request.getEmail());
             loginRequest.setPassword(request.getPassword());
             
-            return login(loginRequest);
+            // 로그인 성공 시 User Service 실패 여부를 알려줌
+            ResponseEntity<AuthResponse> loginResponse = login(loginRequest);
+            if (loginResponse.getStatusCode().is2xxSuccessful() && !userServiceSuccess) {
+                AuthResponse authResponse = loginResponse.getBody();
+                authResponse.setMessage("회원가입 성공 (일부 서비스 동기화 대기 중)");
+            }
+            
+            return loginResponse;
             
         } catch (Exception e) {
-            return ResponseEntity.badRequest()
-                .body(new AuthResponse(false, "회원가입 실패: " + e.getMessage(), null, null, null));
+            System.err.println("회원가입 처리 중 예상치 못한 오류: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new AuthResponse(false, "REGISTRATION_FAILED", null, null, null));
         }
     }
 
@@ -102,14 +130,50 @@ public class KeycloakAuthController {
                     (Integer) tokenResponse.get("expires_in")
                 ));
             }
-        } catch (Exception e) {
-            // KeyCloak에 사용자가 없는 경우
-            if (e.getMessage().contains("401") || e.getMessage().contains("Invalid user credentials")) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(new AuthResponse(false, "USER_NOT_FOUND", null, null, null));
+        } catch (HttpClientErrorException e) {
+            // Keycloak HTTP 클라이언트 오류 (4xx)
+            switch (e.getStatusCode()) {
+                case UNAUTHORIZED:
+                    return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(new AuthResponse(false, "INVALID_CREDENTIALS", null, null, null));
+                case BAD_REQUEST:
+                    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(new AuthResponse(false, "INVALID_REQUEST", null, null, null));
+                case FORBIDDEN:
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(new AuthResponse(false, "ACCOUNT_DISABLED", null, null, null));
+                case TOO_MANY_REQUESTS:
+                    return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                        .body(new AuthResponse(false, "RATE_LIMIT_EXCEEDED", null, null, null));
+                default:
+                    return ResponseEntity.status(e.getStatusCode())
+                        .body(new AuthResponse(false, "LOGIN_FAILED", null, null, null));
             }
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(new AuthResponse(false, "로그인 실패: " + e.getMessage(), null, null, null));
+        } catch (HttpServerErrorException e) {
+            // Keycloak 서버 오류 (5xx)
+            System.err.println("Keycloak 서버 오류: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(new AuthResponse(false, "SERVICE_UNAVAILABLE", null, null, null));
+        } catch (ResourceAccessException e) {
+            // 네트워크 연결 오류
+            if (e.getCause() instanceof UnknownHostException) {
+                System.err.println("Keycloak 서버를 찾을 수 없습니다: " + e.getMessage());
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(new AuthResponse(false, "KEYCLOAK_UNAVAILABLE", null, null, null));
+            } else if (e.getCause() instanceof SocketTimeoutException) {
+                System.err.println("Keycloak 서버 연결 타임아웃: " + e.getMessage());
+                return ResponseEntity.status(HttpStatus.REQUEST_TIMEOUT)
+                    .body(new AuthResponse(false, "CONNECTION_TIMEOUT", null, null, null));
+            } else {
+                System.err.println("Keycloak 서버 연결 실패: " + e.getMessage());
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(new AuthResponse(false, "CONNECTION_FAILED", null, null, null));
+            }
+        } catch (Exception e) {
+            // 기타 예외
+            System.err.println("로그인 처리 중 예상치 못한 오류: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new AuthResponse(false, "INTERNAL_ERROR", null, null, null));
         }
 
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
@@ -149,13 +213,38 @@ public class KeycloakAuthController {
                     (Integer) tokenResponse.get("expires_in")
                 ));
             }
+        } catch (HttpClientErrorException e) {
+            // Keycloak HTTP 클라이언트 오류 (4xx)
+            switch (e.getStatusCode()) {
+                case UNAUTHORIZED:
+                    return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(new AuthResponse(false, "INVALID_REFRESH_TOKEN", null, null, null));
+                case BAD_REQUEST:
+                    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(new AuthResponse(false, "MALFORMED_REFRESH_TOKEN", null, null, null));
+                default:
+                    return ResponseEntity.status(e.getStatusCode())
+                        .body(new AuthResponse(false, "TOKEN_REFRESH_FAILED", null, null, null));
+            }
+        } catch (HttpServerErrorException e) {
+            // Keycloak 서버 오류 (5xx)
+            System.err.println("토큰 갱신 중 Keycloak 서버 오류: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(new AuthResponse(false, "SERVICE_UNAVAILABLE", null, null, null));
+        } catch (ResourceAccessException e) {
+            // 네트워크 연결 오류
+            System.err.println("토큰 갱신 중 Keycloak 연결 실패: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(new AuthResponse(false, "KEYCLOAK_UNAVAILABLE", null, null, null));
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(new AuthResponse(false, "토큰 갱신 실패: " + e.getMessage(), null, null, null));
+            // 기타 예외
+            System.err.println("토큰 갱신 처리 중 예상치 못한 오류: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new AuthResponse(false, "INTERNAL_ERROR", null, null, null));
         }
 
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-            .body(new AuthResponse(false, "토큰 갱신 실패", null, null, null));
+            .body(new AuthResponse(false, "TOKEN_REFRESH_FAILED", null, null, null));
     }
 
     @PostMapping("/logout")
@@ -182,9 +271,26 @@ public class KeycloakAuthController {
             restTemplate.postForEntity(logoutUrl, entity, String.class);
 
             return ResponseEntity.ok(Map.of("success", true, "message", "로그아웃 성공"));
+        } catch (HttpClientErrorException e) {
+            // Keycloak HTTP 클라이언트 오류 (4xx)
+            System.err.println("로그아웃 중 Keycloak 클라이언트 오류: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(Map.of("success", false, "message", "INVALID_LOGOUT_REQUEST"));
+        } catch (HttpServerErrorException e) {
+            // Keycloak 서버 오류 (5xx)
+            System.err.println("로그아웃 중 Keycloak 서버 오류: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(Map.of("success", false, "message", "SERVICE_UNAVAILABLE"));
+        } catch (ResourceAccessException e) {
+            // 네트워크 연결 오류
+            System.err.println("로그아웃 중 Keycloak 연결 실패: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(Map.of("success", false, "message", "KEYCLOAK_UNAVAILABLE"));
         } catch (Exception e) {
+            // 기타 예외
+            System.err.println("로그아웃 처리 중 예상치 못한 오류: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Map.of("success", false, "message", "로그아웃 실패: " + e.getMessage()));
+                .body(Map.of("success", false, "message", "INTERNAL_ERROR"));
         }
     }
 

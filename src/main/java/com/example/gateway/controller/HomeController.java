@@ -9,6 +9,24 @@ public class HomeController {
     
     @GetMapping("/")
     @ResponseBody
+    public String root() {
+        return "<!DOCTYPE html>" +
+                "<html>" +
+                "<head><title>Keycloak Gateway</title></head>" +
+                "<body>" +
+                "<h1>Keycloak Gateway</h1>" +
+                "<p>This is the Keycloak gateway. Admin console should be available at the root path.</p>" +
+                "<ul>" +
+                "<li><a href='/gateway'>Gateway Home</a></li>" +
+                "<li><a href='/api/health'>Health Check</a></li>" +
+                "<li><a href='/admin'>Admin Console</a></li>" +
+                "</ul>" +
+                "</body>" +
+                "</html>";
+    }
+    
+    @GetMapping("/gateway")
+    @ResponseBody
     public String home() {
         return "<!DOCTYPE html>" +
                 "<html>" +

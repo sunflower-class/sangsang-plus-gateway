@@ -26,6 +26,8 @@ spec:
             secretKeyRef:
               name: keycloak-secrets
               key: admin-password
+        - name: QUARKUS_HTTP_ENABLE_COMPRESSION
+          value: "false"
         # Azure PostgreSQL 연결 설정
         - name: KC_DB
           value: "postgres"

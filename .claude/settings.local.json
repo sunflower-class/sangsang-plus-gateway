@@ -17,7 +17,10 @@
       "Bash(--from-literal=jwt-secret='VQotLXWvspUdoagFs2jmViXH0gJX4jEIe85KIoFODCE=' )",
       "Bash(-n product-service)",
       "Bash(kubectl rollout:*)",
-      "Bash(kubectl get:*)"
+      "Bash(kubectl get:*)",
+      "Bash(kubectl describe:*)",
+      "Bash(docker tag:*)",
+      "Bash(kubectl set image:*)"
     ],
     "deny": []
   }
