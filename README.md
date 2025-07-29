@@ -1,43 +1,49 @@
-# SangSang Plus Gateway Service
+# SangSang Plus Gateway
 
-Spring Cloud Gateway 기반의 API 게이트웨이 서비스입니다. Keycloak을 통한 사용자 인증, 요청 라우팅, JWT 토큰 관리를 담당합니다.
+Spring Boot 기반의 API Gateway 서비스로 Keycloak OAuth2/OIDC 인증과 Google 소셜 로그인을 지원합니다.
 
-## 기능
+## 🚀 주요 기능
 
-- **API 게이트웨이**: 마이크로서비스 간 요청 라우팅
-- **사용자 인증**: Keycloak 기반 통합 인증 (회원가입, 로그인, JWT 토큰 관리)
-- **보안**: OAuth2/OIDC 표준 기반 인증, JWT 토큰 검증
-- **서비스 디스커버리**: Kubernetes 환경에서 서비스 간 통신
-- **소셜 로그인**: Keycloak을 통한 Google, Facebook 등 소셜 로그인 지원
+- **Keycloak 통합 인증**: OAuth2/OIDC 기반 사용자 인증
+- **Google 소셜 로그인**: 팝업 기반 소셜 로그인 지원
+- **사용자 관리**: 회원가입, 로그인, 중복 사용자 감지
+- **토큰 관리**: Access Token, Refresh Token 발급 및 갱신
+- **Health Check**: Kubernetes 환경 지원
 
-## 기술 스택
+## 📋 전제 조건
 
-- Java 11
-- Spring Boot 2.7.14
-- Spring Cloud Gateway
-- Spring Security + OAuth2 Resource Server
-- Keycloak 22.0.5
-- JWT (JSON Web Token)
-- Maven
-- Docker
-- Kubernetes
+- Java 11+
+- Maven 3.6+
+- Kubernetes Cluster
+- PostgreSQL Database
+- Google OAuth2 Client (Google Console)
+- Keycloak 22.x
 
-## API 엔드포인트
+## 🔧 API 엔드포인트
 
-### Keycloak 인증 관련
-- `POST /api/keycloak/register` - 사용자 회원가입
-- `POST /api/keycloak/login` - 사용자 로그인  
-- `POST /api/keycloak/refresh` - 액세스 토큰 재발급
-- `POST /api/keycloak/logout` - 로그아웃
-- `GET /api/keycloak/userinfo` - 현재 사용자 정보 조회
-- `GET /api/keycloak/validate` - 토큰 유효성 검증
+### 인증 관련
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/keycloak/register` | 회원가입 |
+| POST | `/api/keycloak/login` | 로그인 |
+| POST | `/api/keycloak/refresh` | 토큰 갱신 |
+| POST | `/api/keycloak/logout` | 로그아웃 |
+| GET | `/api/keycloak/userinfo` | 사용자 정보 조회 |
+| GET | `/api/keycloak/validate` | 토큰 검증 |
 
 ### 소셜 로그인
-- `GET /api/keycloak/social-login/{provider}/url` - 소셜 로그인 URL 생성
-- `POST /api/keycloak/social-login/{provider}` - 소셜 로그인 콜백 처리
 
-### 헬스체크
-- `GET /api/health` - 서비스 상태 확인
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/keycloak/social-login/google` | Google 소셜 로그인 시작 |
+| GET | `/api/keycloak/social-login/google/callback` | Google 소셜 로그인 콜백 |
+
+### 기타
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/health` | Health Check |
 
 ## 환경 설정
 
