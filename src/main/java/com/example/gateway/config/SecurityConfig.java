@@ -1,46 +1,56 @@
 package com.example.gateway.config;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
-import org.springframework.security.config.annotation.method.configuration.EnableGlobalMethodSecurity;
-import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.security.config.annotation.method.configuration.EnableReactiveMethodSecurity;
+import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
+import org.springframework.security.config.web.server.ServerHttpSecurity;
+import org.springframework.security.web.server.SecurityWebFilterChain;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.reactive.CorsConfigurationSource;
+import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
+
+import java.util.Arrays;
 
 @Configuration
-@EnableWebSecurity
-@EnableGlobalMethodSecurity(prePostEnabled = true)
+@EnableWebFluxSecurity
+@EnableReactiveMethodSecurity
 public class SecurityConfig {
 
-    @Autowired
-    private CorsConfigurationSource corsConfigurationSource;
-
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        http
-            .cors(cors -> cors.configurationSource(corsConfigurationSource))
+    public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
+        return http
+            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf.disable())
-            .sessionManagement(session -> session
-                .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+            .authorizeExchange(exchanges -> exchanges
+                .pathMatchers("/api/keycloak/**").denyAll()  // 기존 keycloak 엔드포인트 차단 (먼저 차단)
+                .pathMatchers("/api/health").permitAll()
+                .pathMatchers("/api/auth/**").permitAll()
+                .pathMatchers("/api/test/**").permitAll()
+                .pathMatchers("/api/users/**").permitAll()
+                .pathMatchers("/api/products/**").permitAll()
+                .anyExchange().permitAll()
             )
-            .authorizeHttpRequests(authz -> authz
-                .antMatchers("/api/health").permitAll()
-                .antMatchers("/api/auth/register", "/api/auth/login").permitAll()
-                .antMatchers("/api/auth/oauth2/**").permitAll()
-                .antMatchers("/api/keycloak/**").permitAll()
-                .antMatchers("/api/test/**").permitAll()
-                .antMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
-                .antMatchers(HttpMethod.GET, "/api/users").permitAll()
-                .antMatchers("/api/products/**").permitAll()
-                .antMatchers("/api/users/**").permitAll()
-                .antMatchers("/api/auth/refresh", "/api/auth/logout").authenticated()
-                .anyRequest().permitAll()
-            );
-            
-        return http.build();
+            .build();
+    }
+    
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOrigins(Arrays.asList(
+            "https://buildingbite.com",
+            "https://www.buildingbite.com",
+            "https://oauth.buildingbite.com",
+            "http://localhost:3000",
+            "http://localhost:8080"
+        ));
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
+        configuration.setAllowedHeaders(Arrays.asList("*"));
+        configuration.setAllowCredentials(true);
+        configuration.setMaxAge(3600L);
+        
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
     }
 }

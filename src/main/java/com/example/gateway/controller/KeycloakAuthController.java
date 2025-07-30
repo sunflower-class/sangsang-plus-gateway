@@ -24,7 +24,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/keycloak")
+@RequestMapping("/api")
 public class KeycloakAuthController {
 
     // @Autowired
@@ -40,7 +40,7 @@ public class KeycloakAuthController {
 
     private final RestTemplate restTemplate = new RestTemplate();
 
-    @PostMapping("/register")
+    @PostMapping("/auth/register")
     public ResponseEntity<AuthResponse> register(@Valid @RequestBody CreateUserRequest request) {
         try {
             // 1. 먼저 유저 서비스에 사용자 생성 (옵셔널)
@@ -106,7 +106,7 @@ public class KeycloakAuthController {
         }
     }
 
-    @PostMapping("/login")
+    @PostMapping("/auth/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
         try {
             String tokenUrl = internalKeycloakUrl + "/realms/" + realm + "/protocol/openid-connect/token";
@@ -137,11 +137,13 @@ public class KeycloakAuthController {
             }
         } catch (HttpClientErrorException e) {
             // Keycloak HTTP 클라이언트 오류 (4xx)
+            System.err.println("Keycloak 로그인 오류 - Status: " + e.getStatusCode() + ", Body: " + e.getResponseBodyAsString());
             switch (e.getStatusCode()) {
                 case UNAUTHORIZED:
                     return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                         .body(new AuthResponse(false, "INVALID_CREDENTIALS", null, null, null));
                 case BAD_REQUEST:
+                    System.err.println("BAD_REQUEST 상세: " + e.getResponseBodyAsString());
                     return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                         .body(new AuthResponse(false, "INVALID_REQUEST", null, null, null));
                 case FORBIDDEN:
@@ -185,7 +187,7 @@ public class KeycloakAuthController {
             .body(new AuthResponse(false, "로그인 실패", null, null, null));
     }
 
-    @PostMapping("/refresh")
+    @PostMapping("/auth/refresh")
     public ResponseEntity<AuthResponse> refreshToken(@RequestBody Map<String, String> request) {
         try {
             String refreshToken = request.get("refresh_token");
@@ -252,7 +254,7 @@ public class KeycloakAuthController {
             .body(new AuthResponse(false, "TOKEN_REFRESH_FAILED", null, null, null));
     }
 
-    @PostMapping("/logout")
+    @PostMapping("/auth/logout")
     @PreAuthorize("hasRole('USER')")
     public ResponseEntity<Map<String, Object>> logout(@RequestBody Map<String, String> request) {
         try {
@@ -299,7 +301,7 @@ public class KeycloakAuthController {
         }
     }
 
-    @GetMapping("/userinfo")
+    @GetMapping("/auth/userinfo")
     // @PreAuthorize("hasRole('USER')")
     public ResponseEntity<UserResponse> getUserInfo() {
         try {
@@ -314,7 +316,7 @@ public class KeycloakAuthController {
         }
     }
 
-    @GetMapping("/validate")
+    @GetMapping("/auth/validate")
     // @PreAuthorize("hasRole('USER')")
     public ResponseEntity<Map<String, Object>> validateToken() {
         try {
@@ -329,7 +331,7 @@ public class KeycloakAuthController {
         }
     }
 
-    @GetMapping("/admin/users")
+    @GetMapping("/auth/admin/users")
     // @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Map<String, Object>> getAdminData() {
         return ResponseEntity.ok(Map.of(
@@ -340,27 +342,27 @@ public class KeycloakAuthController {
     }
 
 
-    @GetMapping("/test")
+    @GetMapping("/auth/test")
     public ResponseEntity<Map<String, String>> test() {
         System.out.println("=== KeyCloak test endpoint called! ===");
         return ResponseEntity.ok(Map.of("message", "KeyCloak controller is working!"));
     }
 
-    @GetMapping("/social-login/{provider}")
-    public ResponseEntity<Void> socialLoginRedirect(
-            @PathVariable String provider,
-            @RequestParam(required = false) String redirectUri) {
+    // 단순화된 소셜 로그인 엔드포인트
+    @GetMapping("/auth/{provider}")
+    public ResponseEntity<Void> socialLoginRedirect(@PathVariable String provider) {
         try {
-            String baseRedirectUri = redirectUri != null ? redirectUri : "https://oauth.buildingbite.com/api/keycloak/social-login/" + provider + "/callback";
+            // Keycloak이 소셜 로그인 후 돌아올 최종 redirect URI
+            String callbackUri = "https://oauth.buildingbite.com/";
             
             String authUrl = keycloakServerUrl + "/realms/" + realm + "/protocol/openid-connect/auth" +
                 "?client_id=" + clientId +
                 "&response_type=code" +
                 "&scope=openid+email+profile" +
-                "&redirect_uri=" + java.net.URLEncoder.encode(baseRedirectUri, "UTF-8") +
+                "&redirect_uri=" + java.net.URLEncoder.encode(callbackUri, "UTF-8") +
                 "&kc_idp_hint=" + provider;
             
-            System.out.println("Redirecting to: " + authUrl);
+            System.out.println("Social login redirect: " + authUrl);
             
             HttpHeaders headers = new HttpHeaders();
             headers.setLocation(java.net.URI.create(authUrl));
@@ -372,35 +374,54 @@ public class KeycloakAuthController {
         }
     }
     
-    @GetMapping("/social-login/{provider}/callback")
-    public ResponseEntity<String> socialLoginCallback(
+    @GetMapping("/auth/{provider}/callback")
+    public ResponseEntity<Void> socialLoginCallback(
             @PathVariable String provider,
             @RequestParam(required = false) String code,
-            @RequestParam(required = false) String error) {
+            @RequestParam(required = false) String error,
+            @RequestParam(required = false) String state) {
         try {
+            System.out.println("=== Social Login Callback ===");
+            System.out.println("Provider: " + provider);
+            System.out.println("Code: " + (code != null ? "present" : "null"));
+            System.out.println("Error: " + error);
+            System.out.println("State: " + state);
+            // 테스트 환경 - oauth.buildingbite.com으로 리다이렉트
+            String frontendUrl = "https://oauth.buildingbite.com";
+            
+            // 실패 시 - 에러 파라미터와 함께 프론트엔드로 리다이렉트
             if (error != null) {
-                return ResponseEntity.ok("<html><body><script>window.close(); window.opener.postMessage({success: false, error: '" + error + "'}, '*');</script></body></html>");
+                HttpHeaders headers = new HttpHeaders();
+                headers.setLocation(java.net.URI.create(frontendUrl + "/?error=" + error));
+                return ResponseEntity.status(HttpStatus.FOUND).headers(headers).build();
             }
             
             if (code == null) {
-                return ResponseEntity.ok("<html><body><script>window.close(); window.opener.postMessage({success: false, error: 'No authorization code'}, '*');</script></body></html>");
+                HttpHeaders headers = new HttpHeaders();
+                headers.setLocation(java.net.URI.create(frontendUrl + "/?error=no_code"));
+                return ResponseEntity.status(HttpStatus.FOUND).headers(headers).build();
             }
             
             // 토큰 교환
             String tokenUrl = internalKeycloakUrl + "/realms/" + realm + "/protocol/openid-connect/token";
+            System.out.println("Token URL: " + tokenUrl);
             
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+            HttpHeaders tokenHeaders = new HttpHeaders();
+            tokenHeaders.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
             
             MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
             body.add("grant_type", "authorization_code");
             body.add("client_id", clientId);
             body.add("client_secret", clientSecret);
             body.add("code", code);
-            body.add("redirect_uri", "https://oauth.buildingbite.com/api/keycloak/social-login/" + provider + "/callback");
+            body.add("redirect_uri", "https://oauth.buildingbite.com/api/auth/" + provider + "/callback");
             
-            HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(body, headers);
+            System.out.println("Token exchange request body: " + body);
+            
+            HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(body, tokenHeaders);
             ResponseEntity<Map> response = restTemplate.postForEntity(tokenUrl, entity, Map.class);
+            
+            System.out.println("Token response status: " + response.getStatusCode());
             
             if (response.getStatusCode() == HttpStatus.OK) {
                 Map<String, Object> tokenResponse = response.getBody();
@@ -411,18 +432,26 @@ public class KeycloakAuthController {
                 // 소셜 로그인 사용자 동기화
                 syncSocialLoginUser(provider, accessToken);
                 
-                // 성공 응답을 부모 창으로 전달
-                String successScript = String.format(
-                    "<html><body><script>window.opener.postMessage({success: true, token: '%s', refreshToken: '%s', expiresIn: %d, provider: '%s'}, '*'); window.close();</script></body></html>",
-                    accessToken, refreshToken, expiresIn, provider
-                );
+                // 성공 시 - 루트로 리다이렉트
+                HttpHeaders headers = new HttpHeaders();
+                headers.setLocation(java.net.URI.create(frontendUrl + "/"));
+                return ResponseEntity.status(HttpStatus.FOUND).headers(headers).build();
                 
-                return ResponseEntity.ok(successScript);
             } else {
-                return ResponseEntity.ok("<html><body><script>window.close(); window.opener.postMessage({success: false, error: 'Token exchange failed'}, '*');</script></body></html>");
+                HttpHeaders headers = new HttpHeaders();
+                headers.setLocation(java.net.URI.create(frontendUrl + "/?error=token_exchange_failed"));
+                return ResponseEntity.status(HttpStatus.FOUND).headers(headers).build();
             }
         } catch (Exception e) {
-            return ResponseEntity.ok("<html><body><script>window.close(); window.opener.postMessage({success: false, error: '" + e.getMessage() + "'}, '*');</script></body></html>");
+            System.err.println("=== Social login callback error ===");
+            System.err.println("Error type: " + e.getClass().getSimpleName());
+            System.err.println("Error message: " + e.getMessage());
+            e.printStackTrace();
+            
+            String frontendUrl = "https://oauth.buildingbite.com";
+            HttpHeaders headers = new HttpHeaders();
+            headers.setLocation(java.net.URI.create(frontendUrl + "/?error=server_error"));
+            return ResponseEntity.status(HttpStatus.FOUND).headers(headers).build();
         }
     }
 
@@ -517,7 +546,7 @@ public class KeycloakAuthController {
             userRepresentation.put("username", request.getEmail());
             userRepresentation.put("email", request.getEmail());
             userRepresentation.put("enabled", true);
-            userRepresentation.put("emailVerified", false);
+            userRepresentation.put("emailVerified", true);
             
             // 사용자 생성
             HttpEntity<Map<String, Object>> userEntity = new HttpEntity<>(userRepresentation, userHeaders);

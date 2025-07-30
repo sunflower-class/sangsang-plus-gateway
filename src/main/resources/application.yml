@@ -4,6 +4,32 @@ server:
 spring:
   application:
     name: gateway-service
+  main:
+    web-application-type: reactive
+  
+  cloud:
+    gateway:
+      routes:
+        - id: user-service
+          uri: ${USER_SERVICE_URL:http://user-service.user-service.svc.cluster.local}
+          predicates:
+            - Path=/api/users/**
+          filters:
+            - JwtAuth
+            
+        - id: product-service
+          uri: ${PRODUCT_SERVICE_URL:http://product-service.product-service.svc.cluster.local}
+          predicates:
+            - Path=/api/products/**
+          filters:
+            - JwtAuth
+            
+      
+      # default-filters:
+      #   - name: RequestRateLimiter
+      #     args:
+      #       redis-rate-limiter.replenishRate: 10
+      #       redis-rate-limiter.burstCapacity: 20
 
   
   kafka:

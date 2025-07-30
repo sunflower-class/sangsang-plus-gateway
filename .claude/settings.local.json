@@ -22,7 +22,11 @@
       "Bash(docker tag:*)",
       "Bash(kubectl set image:*)",
       "Bash(pkill:*)",
-      "Bash(true)"
+      "Bash(true)",
+      "Bash(docker build:*)",
+      "Bash(mvn clean:*)",
+      "Bash(kubectl wait:*)",
+      "Bash(docker push:*)"
     ],
     "deny": []
   }

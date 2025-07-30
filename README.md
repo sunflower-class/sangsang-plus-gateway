@@ -1,13 +1,15 @@
 # SangSang Plus Gateway
 
-Spring Boot 기반의 API Gateway 서비스로 Keycloak OAuth2/OIDC 인증과 Google 소셜 로그인을 지원합니다.
+Spring Cloud Gateway 기반의 API Gateway 서비스로 Keycloak OAuth2/OIDC 인증과 Google 소셜 로그인을 지원합니다.
 
 ## 🚀 주요 기능
 
 - **Keycloak 통합 인증**: OAuth2/OIDC 기반 사용자 인증
-- **Google 소셜 로그인**: 팝업 기반 소셜 로그인 지원
+- **Google 소셜 로그인**: 팝업 기반 소셜 로그인 지원  
 - **사용자 관리**: 회원가입, 로그인, 중복 사용자 감지
 - **토큰 관리**: Access Token, Refresh Token 발급 및 갱신
+- **JWT 게이트웨이 검증**: JWT 토큰을 게이트웨이 레벨에서 검증하고 헤더로 사용자 정보 전달
+- **마이크로서비스 라우팅**: 사용자 서비스, 제품 서비스로 요청 라우팅
 - **Health Check**: Kubernetes 환경 지원
 
 ## 📋 전제 조건
@@ -25,19 +27,271 @@ Spring Boot 기반의 API Gateway 서비스로 Keycloak OAuth2/OIDC 인증과 Go
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/keycloak/register` | 회원가입 |
-| POST | `/api/keycloak/login` | 로그인 |
-| POST | `/api/keycloak/refresh` | 토큰 갱신 |
-| POST | `/api/keycloak/logout` | 로그아웃 |
-| GET | `/api/keycloak/userinfo` | 사용자 정보 조회 |
-| GET | `/api/keycloak/validate` | 토큰 검증 |
+| POST | `/api/auth/register` | 회원가입 |
+| POST | `/api/auth/login` | 로그인 |
+| POST | `/api/auth/refresh` | 토큰 갱신 |
+| POST | `/api/auth/logout` | 로그아웃 |
+| GET | `/api/auth/userinfo` | 사용자 정보 조회 |
+| GET | `/api/auth/validate` | 토큰 검증 |
+| GET | `/api/auth/test` | 인증 컨트롤러 테스트 |
 
-### 소셜 로그인
+### 게이트웨이 라우팅
+
+| Method | Path Pattern | Target Service | Description |
+|--------|-------------|----------------|-------------|
+| ALL | `/api/users/**` | User Service | 사용자 관리 API |
+| ALL | `/api/products/**` | Product Service | 제품 관리 API |
+
+### 소셜 로그인 (단순화된 엔드포인트)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/keycloak/social-login/google` | Google 소셜 로그인 시작 |
-| GET | `/api/keycloak/social-login/google/callback` | Google 소셜 로그인 콜백 |
+| GET | `/api/auth/google` | Google 소셜 로그인 |
+| GET | `/api/auth/google/callback` | Google 소셜 로그인 콜백 (내부용) |
+
+## 🔐 JWT 게이트웨이 검증
+
+이 게이트웨이는 **중앙 집중식 JWT 검증**을 수행합니다. 모든 보호된 엔드포인트에 대한 요청은 게이트웨이에서 JWT 토큰을 검증하고, 검증된 사용자 정보를 헤더로 다운스트림 서비스에 전달합니다.
+
+### 토큰 검증 과정
+
+1. **토큰 추출**: Authorization Bearer 토큰 또는 쿠키에서 JWT 토큰 추출
+2. **RSA 공개키 검증**: Keycloak RSA 공개키로 토큰 서명 검증
+3. **클레임 추출**: 토큰에서 사용자 이메일과 역할 정보 추출
+4. **헤더 추가**: 검증된 정보를 HTTP 헤더로 추가
+5. **요청 전달**: 헤더와 함께 다운스트림 서비스로 요청 전달
+
+### 다운스트림 서비스에 전달되는 헤더
+
+| 헤더명 | 설명 | 예시 |
+|--------|------|------|
+| `X-User-Email` | 사용자 이메일 주소 | `user@example.com` |
+| `X-User-Role` | 사용자 역할 (쉼표 구분) | `USER,ADMIN` |
+
+### 토큰 검증 설정
+
+```yaml
+# JWT 검증 필터가 적용되는 라우트
+spring:
+  cloud:
+    gateway:
+      routes:
+        - id: user-service
+          uri: http://user-service.user-service.svc.cluster.local
+          predicates:
+            - Path=/api/users/**
+          filters:
+            - JwtAuth  # JWT 검증 필터 적용
+```
+
+### 다운스트림 서비스에서 사용자 정보 활용
+
+다운스트림 서비스는 JWT 토큰을 검증할 필요 없이 헤더에서 사용자 정보를 직접 사용할 수 있습니다:
+
+```java
+// Spring Boot Controller 예시
+@RestController
+public class UserController {
+    
+    @GetMapping("/api/users/me")
+    public ResponseEntity<User> getCurrentUser(
+            @RequestHeader("X-User-Email") String email,
+            @RequestHeader("X-User-Role") String roles) {
+        
+        // 게이트웨이에서 검증된 사용자 정보 사용
+        return userService.findByEmail(email);
+    }
+}
+```
+
+## 🎨 프론트엔드 통합 가이드
+
+### Google 소셜 로그인 버튼 구현
+
+프론트엔드에서 Google 로그인 버튼을 구현할 때 다음 방법을 사용하세요:
+
+```html
+<!-- HTML 버튼 -->
+<a href="https://oauth.buildingbite.com/api/auth/google" class="google-login-button">
+    Google로 로그인
+</a>
+
+<!-- 또는 JavaScript로 이동 -->
+<button onclick="loginWithGoogle()">Google로 로그인</button>
+
+<script>
+function loginWithGoogle() {
+    // 현재 페이지에서 Google 로그인 페이지로 이동
+    window.location.href = 'https://oauth.buildingbite.com/api/auth/google';
+}
+</script>
+```
+
+### 콜백 처리 페이지 구현
+
+로그인 성공 후 `/auth-callback` 페이지에서 토큰을 처리하세요:
+
+```html
+<!-- /auth-callback 페이지 -->
+<script>
+// URL에서 파라미터 추출
+const urlParams = new URLSearchParams(window.location.search);
+const token = urlParams.get('token');
+const refreshToken = urlParams.get('refreshToken');
+const expiresIn = urlParams.get('expiresIn');
+const provider = urlParams.get('provider');
+
+if (token && refreshToken) {
+    // 토큰을 localStorage에 저장
+    localStorage.setItem('accessToken', token);
+    localStorage.setItem('refreshToken', refreshToken);
+    localStorage.setItem('tokenExpiresIn', expiresIn);
+    
+    // URL에서 토큰 정보 제거 (보안상 중요!)
+    window.history.replaceState({}, document.title, '/');
+    
+    // 홈페이지로 이동
+    window.location.href = '/';
+} else {
+    // 로그인 실패 처리
+    window.location.href = '/login';
+}
+</script>
+```
+
+### React 컴포넌트 예시
+
+```jsx
+import React from 'react';
+
+const GoogleLoginButton = () => {
+    const handleGoogleLogin = () => {
+        // 현재 페이지에서 Google 로그인으로 이동
+        window.location.href = 'https://oauth.buildingbite.com/api/auth/google';
+    };
+
+    return (
+        <button onClick={handleGoogleLogin} className="google-login-button">
+            Google로 로그인
+        </button>
+    );
+};
+
+// 콜백 처리 컴포넌트
+const AuthCallback = () => {
+    React.useEffect(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token');
+        const refreshToken = urlParams.get('refreshToken');
+        const expiresIn = urlParams.get('expiresIn');
+        const error = urlParams.get('error');
+
+        if (error) {
+            console.error('로그인 오류:', error);
+            window.location.href = '/login';
+            return;
+        }
+
+        if (token && refreshToken) {
+            // 토큰 저장
+            localStorage.setItem('accessToken', token);
+            localStorage.setItem('refreshToken', refreshToken);
+            localStorage.setItem('tokenExpiresIn', expiresIn);
+            
+            // URL 정리 후 홈으로 이동
+            window.history.replaceState({}, document.title, '/');
+            window.location.href = '/';
+        } else {
+            window.location.href = '/login';
+        }
+    }, []);
+
+    return <div>로그인 처리 중...</div>;
+};
+            if (event.origin !== 'https://oauth.buildingbite.com') return;
+
+            const { success, error, token, refreshToken } = event.data;
+
+            if (success) {
+                // 토큰 저장
+                localStorage.setItem('accessToken', token);
+                localStorage.setItem('refreshToken', refreshToken);
+                
+                // 루트(/)로 이동
+                window.location.href = '/';
+            } else {
+                alert('로그인 실패: ' + error);
+            }
+
+            popup.close();
+            window.removeEventListener('message', handleMessage);
+        };
+
+        window.addEventListener('message', handleMessage);
+    };
+
+    return (
+        <button onClick={handleGoogleLogin} className="google-login-btn">
+            <img src="/google-icon.svg" alt="Google" />
+            Google로 로그인
+        </button>
+    );
+};
+
+export default GoogleLoginButton;
+```
+
+### Vue.js 컴포넌트 예시
+
+```vue
+<template>
+  <button @click="loginWithGoogle" class="google-login-btn">
+    Google로 로그인
+  </button>
+</template>
+
+<script>
+export default {
+  methods: {
+    loginWithGoogle() {
+      const popup = window.open(
+        'https://oauth.buildingbite.com/api/auth/google',
+        'googleLogin',
+        'width=500,height=600,scrollbars=yes,resizable=yes'
+      );
+
+      const handleMessage = (event) => {
+        if (event.origin !== 'https://oauth.buildingbite.com') return;
+
+        const { success, error, token, refreshToken } = event.data;
+
+        if (success) {
+          // 토큰 저장
+          localStorage.setItem('accessToken', token);
+          localStorage.setItem('refreshToken', refreshToken);
+          
+          // 루트(/)로 이동
+          window.location.href = '/';
+        } else {
+          this.$toast.error('로그인 실패: ' + error);
+        }
+
+        popup.close();
+        window.removeEventListener('message', handleMessage);
+      };
+
+      window.addEventListener('message', handleMessage);
+    }
+  }
+}
+</script>
+```
+
+**핵심 사항:**
+- ✅ **간단한 URL**: `https://oauth.buildingbite.com/api/auth/google`
+- ✅ **팝업 방식**: 팝업으로 로그인하고 결과를 메시지로 전달
+- ✅ **성공 시**: 토큰을 받아서 저장 후 원하는 페이지로 이동
+- ✅ **실패 시**: 에러 메시지를 받아서 처리
 
 ### 기타
 
@@ -531,7 +785,7 @@ spec:
 
 ### 회원가입
 ```bash
-curl -X POST https://oauth.buildingbite.com/api/keycloak/register \
+curl -X POST https://oauth.buildingbite.com/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "email": "newuser@example.com",
@@ -553,7 +807,7 @@ curl -X POST https://oauth.buildingbite.com/api/keycloak/register \
 
 ### 로그인
 ```bash
-curl -X POST https://oauth.buildingbite.com/api/keycloak/login \
+curl -X POST https://oauth.buildingbite.com/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "email": "test@example.com",
@@ -585,7 +839,7 @@ curl -X POST https://oauth.buildingbite.com/api/keycloak/login \
 
 ### 토큰 재발급
 ```bash
-curl -X POST https://oauth.buildingbite.com/api/keycloak/refresh \
+curl -X POST https://oauth.buildingbite.com/api/auth/refresh \
   -H "Content-Type: application/json" \
   -d '{
     "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJmYWQxZjYyNC0z..."
@@ -605,7 +859,7 @@ curl -X POST https://oauth.buildingbite.com/api/keycloak/refresh \
 
 ### 로그아웃
 ```bash
-curl -X POST https://oauth.buildingbite.com/api/keycloak/logout \
+curl -X POST https://oauth.buildingbite.com/api/auth/logout \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkI..." \
   -d '{
@@ -623,7 +877,7 @@ curl -X POST https://oauth.buildingbite.com/api/keycloak/logout \
 
 ### 사용자 정보 조회
 ```bash
-curl -X GET https://oauth.buildingbite.com/api/keycloak/userinfo \
+curl -X GET https://oauth.buildingbite.com/api/auth/userinfo \
   -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkI..."
 ```
 
@@ -641,7 +895,7 @@ curl -X GET https://oauth.buildingbite.com/api/keycloak/userinfo \
 
 ### 토큰 검증
 ```bash
-curl -X GET https://oauth.buildingbite.com/api/keycloak/validate \
+curl -X GET https://oauth.buildingbite.com/api/auth/validate \
   -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkI..."
 ```
 
@@ -656,7 +910,7 @@ curl -X GET https://oauth.buildingbite.com/api/keycloak/validate \
 
 ### 소셜 로그인 URL 생성
 ```bash
-curl -X GET https://oauth.buildingbite.com/api/keycloak/social-login/google/url?redirectUri=https://buildingbite.com/callback
+curl -X GET https://oauth.buildingbite.com/api/auth/social-login/google/url?redirectUri=https://buildingbite.com/callback
 ```
 
 **응답 예시**
@@ -765,22 +1019,42 @@ POST /admin/realms/{realm}/users
 
 ### 2. 클라이언트 코드 변경
 ```javascript
-// 기존
-const response = await fetch('/api/auth/login', {
+// 기존 (구 버전)
+const response = await fetch('/api/keycloak/login', {
   method: 'POST',
   body: JSON.stringify({ email, password })
 });
 
-// 변경
-const response = await fetch('/api/keycloak/login', {
+// 변경 (새 버전)
+const response = await fetch('/api/auth/login', {
   method: 'POST',
   body: JSON.stringify({ email, password })
 });
 ```
 
 ### 3. 토큰 검증 로직 변경
-- 기존: 자체 JWT Secret으로 검증
-- 변경: Keycloak의 공개키로 검증
+- 기존: 각 마이크로서비스에서 개별적으로 JWT 검증
+- 변경: 게이트웨이에서 중앙 집중식 JWT 검증 및 헤더 전달
+
+### 4. 아키텍처 변경사항
+
+#### 이전 아키텍처
+```
+Client → Gateway (단순 프록시) → User Service (JWT 검증)
+                                → Product Service (JWT 검증)
+```
+
+#### 현재 아키텍처  
+```
+Client → Gateway (JWT 검증 + 헤더 추가) → User Service (헤더 사용)
+                                        → Product Service (헤더 사용)
+```
+
+**장점:**
+- 중앙 집중식 인증 관리
+- 마이크로서비스의 JWT 의존성 제거
+- 일관된 사용자 정보 전달
+- 토큰 검증 로직 단순화
 
 ## 기여 방법
 
