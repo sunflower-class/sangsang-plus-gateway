@@ -63,10 +63,20 @@ Spring Cloud Gateway 기반의 API Gateway 서비스로 Keycloak OAuth2/OIDC 인
 
 ### 다운스트림 서비스에 전달되는 헤더
 
-| 헤더명 | 설명 | 예시 |
-|--------|------|------|
-| `X-User-Email` | 사용자 이메일 주소 | `user@example.com` |
-| `X-User-Role` | 사용자 역할 (쉼표 구분) | `USER,ADMIN` |
+#### 🔐 JWT 토큰이 있을 때 (인증된 사용자)
+
+| 헤더명 | 설명 | 예시 값 | 데이터 소스 |
+|--------|------|---------|-----------|
+| `X-User-Email` | 사용자 이메일 | `user@example.com` | JWT `email` 클레임 |
+| `X-User-Role` | 사용자 역할 (쉼표 구분) | `USER` 또는 `USER,ADMIN` | JWT `realm_access.roles` |
+| `X-User-Provider` | 로그인 제공자 | `LOCAL` 또는 `GOOGLE` | JWT `provider` 커스텀 속성 |
+| `X-User-LoginCount` | 총 로그인 횟수 | `15` | JWT `loginCount` 커스텀 속성 |
+| `X-User-LastLoginAt` | 마지막 로그인 시간 | `2025-01-15T10:30:00` | JWT `lastLoginAt` 커스텀 속성 |
+
+#### 🌐 JWT 토큰이 없을 때 (비인증 사용자)
+
+- 헤더 없이 다운스트림 서비스로 통과
+- 각 서비스에서 비인증 사용자로 처리 가능
 
 ### 토큰 검증 설정
 
@@ -104,11 +114,52 @@ public class UserController {
 }
 ```
 
+## 🗃️ Keycloak 사용자 데이터 스키마
+
+### 자동 관리되는 사용자 속성
+
+이 게이트웨이는 Keycloak에서 다음과 같은 사용자 데이터를 자동으로 관리합니다:
+
+#### 기본 제공 필드
+| 필드명 | 타입 | 설명 | 예시 값 |
+|--------|------|------|---------|
+| `username` | String | 로그인 ID (이메일과 동일) | `user@example.com` |
+| `email` | String | 이메일 주소 | `user@example.com` |
+| `emailVerified` | Boolean | 이메일 인증 여부 | `true` |
+| `enabled` | Boolean | 계정 활성화 여부 | `true` |
+| `createdTimestamp` | Long | 계정 생성 시간 (Unix timestamp) | `1672531200000` |
+
+#### 커스텀 속성 (자동 생성 및 관리)
+| 속성명 | 타입 | 설명 | 기본값 | 업데이트 시점 |
+|--------|------|------|--------|-------------|
+| `role` | String | 사용자 역할 | `USER` | 회원가입 시 |
+| `provider` | String | 로그인 제공자 | `LOCAL` | 회원가업/소셜로그인 시 |
+| `loginCount` | String | 총 로그인 횟수 | `0` | 매 로그인 시 +1 |
+| `lastLoginAt` | String | 마지막 로그인 시간 | 빈 문자열 | 매 로그인 시 현재시간 |
+| `createdAt` | String | 커스텀 생성 시간 | 현재시간 | 회원가입 시 |
+
+### 데이터 흐름
+
+```
+회원가입 → Keycloak User 생성 + 커스텀 속성 초기화
+    ↓
+로그인 → JWT 발급 + 로그인 통계 업데이트 (loginCount++, lastLoginAt)
+    ↓
+API 요청 → Gateway JWT 검증 → 모든 사용자 정보를 헤더로 전달
+    ↓
+다운스트림 서비스 → 헤더에서 사용자 정보 활용
+```
+
+### 소셜 로그인 처리
+
+- **Google 로그인**: `provider=GOOGLE`, 기타 속성은 일반 회원가입과 동일
+- **자동 동기화**: 소셜 로그인 사용자도 동일한 커스텀 속성 구조 적용
+
 ## 🎨 프론트엔드 통합 가이드
 
 ### Google 소셜 로그인 버튼 구현
 
-프론트엔드에서 Google 로그인 버튼을 구현할 때 다음 방법을 사용하세요:
+프론트엔드에서 Google 로그인 버튼을 구현할 때 리다이렉트 방식을 사용합니다:
 
 ```html
 <!-- HTML 버튼 -->
@@ -121,7 +172,7 @@ public class UserController {
 
 <script>
 function loginWithGoogle() {
-    // 현재 페이지에서 Google 로그인 페이지로 이동
+    // 현재 페이지에서 Google 로그인 페이지로 리다이렉트
     window.location.href = 'https://oauth.buildingbite.com/api/auth/google';
 }
 </script>
@@ -129,19 +180,22 @@ function loginWithGoogle() {
 
 ### 콜백 처리 페이지 구현
 
-로그인 성공 후 `/auth-callback` 페이지에서 토큰을 처리하세요:
+로그인 성공 후 콜백 페이지에서 토큰을 처리하세요:
 
 ```html
-<!-- /auth-callback 페이지 -->
+<!-- 콜백 처리 페이지 -->
 <script>
 // URL에서 파라미터 추출
 const urlParams = new URLSearchParams(window.location.search);
 const token = urlParams.get('token');
 const refreshToken = urlParams.get('refreshToken');
 const expiresIn = urlParams.get('expiresIn');
-const provider = urlParams.get('provider');
+const error = urlParams.get('error');
 
-if (token && refreshToken) {
+if (error) {
+    alert('로그인 실패: ' + error);
+    window.location.href = '/login';
+} else if (token && refreshToken) {
     // 토큰을 localStorage에 저장
     localStorage.setItem('accessToken', token);
     localStorage.setItem('refreshToken', refreshToken);
@@ -208,37 +262,8 @@ const AuthCallback = () => {
 
     return <div>로그인 처리 중...</div>;
 };
-            if (event.origin !== 'https://oauth.buildingbite.com') return;
 
-            const { success, error, token, refreshToken } = event.data;
-
-            if (success) {
-                // 토큰 저장
-                localStorage.setItem('accessToken', token);
-                localStorage.setItem('refreshToken', refreshToken);
-                
-                // 루트(/)로 이동
-                window.location.href = '/';
-            } else {
-                alert('로그인 실패: ' + error);
-            }
-
-            popup.close();
-            window.removeEventListener('message', handleMessage);
-        };
-
-        window.addEventListener('message', handleMessage);
-    };
-
-    return (
-        <button onClick={handleGoogleLogin} className="google-login-btn">
-            <img src="/google-icon.svg" alt="Google" />
-            Google로 로그인
-        </button>
-    );
-};
-
-export default GoogleLoginButton;
+export default { GoogleLoginButton, AuthCallback };
 ```
 
 ### Vue.js 컴포넌트 예시
@@ -307,7 +332,6 @@ export default {
 |--------|------|--------|------|
 | `USER_SERVICE_URL` | User 서비스 URL | `http://user-service` | K8s: `http://user-service.user-service.svc.cluster.local` |
 | `PRODUCT_SERVICE_URL` | Product 서비스 URL | `http://product-service` | K8s: `http://product-service.product-service.svc.cluster.local` |
-| `KAFKA_BOOTSTRAP_SERVERS` | Kafka 서버 주소 | `kafka:9092` | Kafka 클러스터 주소 |
 | `FRONTEND_URL` | 프론트엔드 URL | `https://buildingbite.com` | OAuth2 리다이렉트용 |
 
 ### Keycloak 설정 (필수)
@@ -320,11 +344,11 @@ export default {
 | `KEYCLOAK_CLIENT_SECRET` | Keycloak 클라이언트 시크릿 | - | **필수 설정** |
 | `KEYCLOAK_ISSUER_URI` | JWT Issuer URI | `http://keycloak:8080/realms/sangsang-plus` | 토큰 검증용 |
 
-### JWT 토큰 설정 (Deprecated - Keycloak 사용)
+### JWT 토큰 설정
 
 | 변수명 | 설명 | 기본값 |
 |--------|------|--------|
-| `JWT_SECRET` | JWT 서명용 비밀키 | `mySecretKey` | **Keycloak 사용 시 불필요** |
+| `JWT_SECRET` | JWT 서명용 비밀키 | `mySecretKey` | **게이트웨이 자체 토큰용** |
 | `JWT_ACCESS_TOKEN_EXPIRATION` | 액세스 토큰 만료시간 | - | Keycloak에서 관리 |
 | `JWT_REFRESH_TOKEN_EXPIRATION` | 리프레시 토큰 만료시간 | - | Keycloak에서 관리 |
 
@@ -332,8 +356,8 @@ export default {
 
 | 변수명 | 설명 | 비고 |
 |--------|------|------|
-| `GOOGLE_CLIENT_ID` | Google OAuth 클라이언트 ID | Keycloak에서 설정 권장 |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth 클라이언트 시크릿 | Keycloak에서 설정 권장 |
+| `GOOGLE_CLIENT_ID` | Google OAuth 클라이언트 ID | **필수 설정** |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth 클라이언트 시크릿 | **필수 설정** |
 
 ## 로컬 개발
 
@@ -387,7 +411,6 @@ docker run -p 8080:8080 \
 1. **Keycloak** (네임스페이스: `default` 또는 `keycloak`)
 2. **User Service** (네임스페이스: `user-service`)
 3. **Product Service** (네임스페이스: `product-service`)  
-4. **Kafka** (네임스페이스: `default` 또는 `kafka`)
 
 ### 1. Keycloak 배포 및 설정
 
@@ -426,8 +449,7 @@ kubectl create namespace gateway
 #### Keycloak 통합 Secret
 ```bash
 kubectl create secret generic gateway-secrets \
-  --from-literal=keycloak-client-secret='your-keycloak-client-secret' \
-  --namespace=gateway  # 네임스페이스 사용 시
+  --from-literal=keycloak-client-secret='your-keycloak-client-secret' \  # 네임스페이스 사용 시
 ```
 
 #### 환경 변수로 Keycloak 설정 전달
@@ -436,8 +458,117 @@ kubectl create configmap gateway-config \
   --from-literal=KEYCLOAK_AUTH_SERVER_URL='http://keycloak:8080' \
   --from-literal=KEYCLOAK_REALM='sangsang-plus' \
   --from-literal=KEYCLOAK_CLIENT_ID='gateway-client' \
-  --namespace=gateway
 ```
+
+#### JWT Public Key Secret 생성 및 관리
+
+게이트웨이는 JWT 토큰 검증을 위해 RSA public key를 사용합니다. Public key는 Kubernetes Secret으로 안전하게 관리됩니다.
+
+##### 1. RSA 키 쌍 생성 (최초 설정 시)
+```bash
+# OpenSSL 설치 (Ubuntu/Debian)
+sudo apt update
+sudo apt install openssl libssl-dev
+
+# RSA 키 쌍 생성
+openssl genrsa -out private.pem 2048
+openssl rsa -in private.pem -pubout -out public.pem
+
+# Keycloak에서 사용할 수 있도록 private key를 Keycloak에 설정
+# public key는 게이트웨이에서 JWT 검증용으로 사용
+```
+
+##### 2. Public Key Secret 생성
+```bash
+# public.pem 파일로부터 Kubernetes Secret 생성
+kubectl create secret generic jwt-public-key --from-file=public.pem=public.pem
+
+# Secret 확인
+kubectl get secret jwt-public-key
+kubectl describe secret jwt-public-key
+```
+
+##### 3. Public Key 교체 방법
+
+**시나리오**: Keycloak에서 키를 로테이션하거나 새로운 키 쌍을 사용해야 하는 경우
+
+```bash
+# 1. 새로운 키 쌍 생성
+openssl genrsa -out new-private.pem 2048
+openssl rsa -in new-private.pem -pubout -out new-public.pem
+
+# 2. Keycloak에 새로운 private key 설정
+# - Keycloak Admin Console → Realm Settings → Keys → Providers
+# - 새로운 RSA key provider 추가 또는 기존 키 교체
+
+# 3. 기존 Secret 삭제
+kubectl delete secret jwt-public-key
+
+# 4. 새로운 Public Key로 Secret 재생성
+kubectl create secret generic jwt-public-key --from-file=public.pem=new-public.pem
+
+# 5. 게이트웨이 재시작 (Secret이 마운트된 Pod 재시작)
+kubectl rollout restart deployment sangsang-plus-gateway
+
+# 6. 재시작 완료 확인
+kubectl rollout status deployment sangsang-plus-gateway
+```
+
+##### 4. 무중단 키 교체 (Blue-Green 방식)
+
+프로덕션 환경에서 무중단으로 키를 교체하는 방법:
+
+```bash
+# 1. Keycloak에서 새로운 키를 추가 (기존 키와 함께 사용)
+# 2. 새로운 키로 Secret 업데이트
+kubectl create secret generic jwt-public-key-new --from-file=public.pem=new-public.pem
+
+# 3. Deployment에서 새로운 Secret 사용하도록 업데이트
+kubectl patch deployment sangsang-plus-gateway \
+  -p '{"spec":{"template":{"spec":{"volumes":[{"name":"jwt-public-key","secret":{"secretName":"jwt-public-key-new"}}]}}}}'
+
+# 4. 모든 Pod이 새로운 키로 업데이트된 후 기존 Secret 삭제
+kubectl delete secret jwt-public-key
+kubectl delete secret jwt-public-key-new
+
+# 5. 최종적으로 정상 이름으로 Secret 재생성
+kubectl create secret generic jwt-public-key --from-file=public.pem=new-public.pem
+```
+
+##### 5. Public Key 검증
+
+키 교체 후 정상 동작하는지 확인:
+
+```bash
+# 1. 게이트웨이 로그에서 키 로드 확인
+kubectl logs deployment/sangsang-plus-gateway | grep -i "public"
+# 출력: "Loading public key from file: /app/secrets/public.pem"
+# 출력: "Successfully loaded public key from file"
+
+# 2. JWT 토큰으로 API 호출 테스트
+# 유효한 토큰으로 테스트
+curl https://oauth.buildingbite.com/api/users/me \
+  -H "Authorization: Bearer YOUR_VALID_JWT_TOKEN"
+
+# 잘못된 토큰으로 테스트 (401 에러가 나와야 정상)
+curl https://oauth.buildingbite.com/api/users/me \
+  -H "Authorization: Bearer invalid-token"
+```
+
+##### 6. 보안 고려사항
+
+- **Private Key 보안**: private.pem 파일은 절대 Git에 커밋하지 마세요
+- **키 순환**: 보안을 위해 주기적으로 키를 교체하는 것을 권장합니다 (예: 6개월마다)
+- **백업**: 키 교체 전에 기존 키와 설정을 백업해두세요
+- **테스트**: 개발 환경에서 먼저 키 교체를 테스트한 후 프로덕션에 적용하세요
+
+```bash
+# Secret 백업
+kubectl get secret jwt-public-key -o yaml > jwt-public-key-backup.yaml
+
+# 복구 시
+kubectl apply -f jwt-public-key-backup.yaml
+``` 
 
 ### 3. 배포 파일 수정 (네임스페이스 사용 시)
 
@@ -555,16 +686,6 @@ kubectl exec -it deployment/sangsang-plus-gateway -n gateway -- \
   curl -f http://product-service.product-service.svc.cluster.local/api/health
 ```
 
-#### Kafka 연결 실패
-```bash
-# Kafka 서비스 확인
-kubectl get svc kafka
-kubectl get pods -l app=kafka
-
-# Kafka 연결 테스트
-kubectl exec -it deployment/sangsang-plus-gateway -n gateway -- \
-  nc -zv kafka 9092
-```
 
 ### 2. JWT 토큰 문제
 
@@ -881,17 +1002,16 @@ curl -X GET https://oauth.buildingbite.com/api/auth/userinfo \
   -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkI..."
 ```
 
-**응답 예시**
+**응답 예시 (Test Data)**
 ```json
 {
-  "id": "e63b9f80-1f50-43d9-8ebc-b99765420f34",
-  "username": "testuser",
-  "email": "test@example.com",
-  "name": "Test User",
-  "emailVerified": true,
-  "roles": ["USER"]
+  "id": "test-id",
+  "username": "test-user",
+  "email": "test@example.com"
 }
 ```
+
+> **주의**: 이 API는 현재 하드코딩된 테스트 데이터를 반환합니다.
 
 ### 토큰 검증
 ```bash
@@ -899,28 +1019,17 @@ curl -X GET https://oauth.buildingbite.com/api/auth/validate \
   -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkI..."
 ```
 
-**응답 예시**
+**응답 예시 (Test Data)**
 ```json
 {
   "valid": true,
-  "username": "testuser",
+  "username": "test-user",
   "roles": ["USER"]
 }
 ```
 
-### 소셜 로그인 URL 생성
-```bash
-curl -X GET https://oauth.buildingbite.com/api/auth/social-login/google/url?redirectUri=https://buildingbite.com/callback
-```
+> **주의**: 이 API는 현재 하드코딩된 테스트 데이터를 반환합니다.
 
-**응답 예시**
-```json
-{
-  "authUrl": "http://oauth.buildingbite.com/realms/sangsang-plus/protocol/openid-connect/auth?client_id=gateway-client&response_type=code&scope=openid%20email%20profile&redirect_uri=https://buildingbite.com/callback&kc_idp_hint=google",
-  "provider": "google",
-  "redirectUri": "https://buildingbite.com/callback"
-}
-```
 
 ### 헬스체크
 ```bash
@@ -930,8 +1039,8 @@ curl -X GET https://oauth.buildingbite.com/api/health
 **응답 예시**
 ```json
 {
-  "status": "UP",
-  "service": "gateway-service"
+  "service": "gateway-service",
+  "status": "UP"
 }
 ```
 
@@ -1019,13 +1128,13 @@ POST /admin/realms/{realm}/users
 
 ### 2. 클라이언트 코드 변경
 ```javascript
-// 기존 (구 버전)
-const response = await fetch('/api/keycloak/login', {
+// 기존 (개별 JWT 서비스)
+const response = await fetch('/api/some-service/login', {
   method: 'POST',
   body: JSON.stringify({ email, password })
 });
 
-// 변경 (새 버전)
+// 변경 (중앙집중식 Keycloak 인증)
 const response = await fetch('/api/auth/login', {
   method: 'POST',
   body: JSON.stringify({ email, password })

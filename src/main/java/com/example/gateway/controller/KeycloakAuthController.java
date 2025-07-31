@@ -5,6 +5,7 @@ import com.example.gateway.dto.request.LoginRequest;
 import com.example.gateway.dto.response.AuthResponse;
 import com.example.gateway.dto.response.UserResponse;
 import com.example.gateway.service.KeycloakService;
+import com.example.gateway.service.KeycloakMapperService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
@@ -21,6 +22,7 @@ import javax.validation.Valid;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -29,6 +31,9 @@ public class KeycloakAuthController {
 
     // @Autowired
     // private KeycloakService keycloakService;
+    
+    @Autowired
+    private KeycloakMapperService mapperService;
 
     // Temporarily hardcode values to test controller scanning
     private String keycloakServerUrl = "https://oauth.buildingbite.com";
@@ -126,6 +131,9 @@ public class KeycloakAuthController {
 
             if (response.getStatusCode() == HttpStatus.OK) {
                 Map<String, Object> tokenResponse = response.getBody();
+                
+                // 로그인 성공 시 통계 업데이트
+                updateUserLoginStats(request.getEmail());
                 
                 return ResponseEntity.ok(new AuthResponse(
                     true,
@@ -347,6 +355,23 @@ public class KeycloakAuthController {
         System.out.println("=== KeyCloak test endpoint called! ===");
         return ResponseEntity.ok(Map.of("message", "KeyCloak controller is working!"));
     }
+    
+    @PostMapping("/auth/setup-mappers")
+    public ResponseEntity<Map<String, String>> setupMappers() {
+        try {
+            mapperService.setupCustomMappers();
+            return ResponseEntity.ok(Map.of(
+                "success", "true",
+                "message", "Keycloak 커스텀 매퍼 설정 완료! JWT 토큰에 커스텀 속성이 포함됩니다."
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of(
+                    "success", "false", 
+                    "message", "매퍼 설정 실패: " + e.getMessage()
+                ));
+        }
+    }
 
     // 단순화된 소셜 로그인 엔드포인트
     @GetMapping("/auth/{provider}")
@@ -548,6 +573,16 @@ public class KeycloakAuthController {
             userRepresentation.put("enabled", true);
             userRepresentation.put("emailVerified", true);
             
+            // 커스텀 속성 추가 (스키마에 맞게)
+            Map<String, List<String>> attributes = new HashMap<>();
+            attributes.put("role", List.of("USER"));  // 기본값 USER
+            attributes.put("provider", List.of("LOCAL"));  // LOCAL 회원가입
+            attributes.put("loginCount", List.of("0"));  // 초기 로그인 횟수
+            attributes.put("lastLoginAt", List.of(""));  // 빈 값으로 초기화
+            attributes.put("createdAt", List.of(java.time.LocalDateTime.now().toString()));
+            
+            userRepresentation.put("attributes", attributes);
+            
             // 사용자 생성
             HttpEntity<Map<String, Object>> userEntity = new HttpEntity<>(userRepresentation, userHeaders);
             ResponseEntity<Void> createResponse = restTemplate.postForEntity(usersUrl, userEntity, Void.class);
@@ -586,6 +621,106 @@ public class KeycloakAuthController {
         } catch (Exception e) {
             System.err.println("KeyCloak 사용자 생성 중 오류: " + e.getMessage());
             return "UNKNOWN_ERROR";
+        }
+    }
+    
+    /**
+     * 사용자 로그인 통계 업데이트 (loginCount, lastLoginAt)
+     */
+    private void updateUserLoginStats(String email) {
+        try {
+            // 1. Service Account 토큰 획득
+            String tokenUrl = internalKeycloakUrl + "/realms/" + realm + "/protocol/openid-connect/token";
+            
+            HttpHeaders tokenHeaders = new HttpHeaders();
+            tokenHeaders.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+            
+            MultiValueMap<String, String> tokenBody = new LinkedMultiValueMap<>();
+            tokenBody.add("grant_type", "client_credentials");
+            tokenBody.add("client_id", clientId);
+            tokenBody.add("client_secret", clientSecret);
+            
+            HttpEntity<MultiValueMap<String, String>> tokenEntity = new HttpEntity<>(tokenBody, tokenHeaders);
+            ResponseEntity<Map> tokenResponse = restTemplate.postForEntity(tokenUrl, tokenEntity, Map.class);
+            
+            if (!tokenResponse.getStatusCode().is2xxSuccessful()) {
+                System.err.println("로그인 통계 업데이트: 토큰 획득 실패");
+                return;
+            }
+            
+            String accessToken = (String) tokenResponse.getBody().get("access_token");
+            
+            // 2. 사용자 검색 (email로)
+            String searchUrl = internalKeycloakUrl + "/admin/realms/" + realm + "/users?email=" + email;
+            
+            HttpHeaders searchHeaders = new HttpHeaders();
+            searchHeaders.setBearerAuth(accessToken);
+            
+            HttpEntity<Void> searchEntity = new HttpEntity<>(searchHeaders);
+            ResponseEntity<java.util.List> searchResponse = restTemplate.exchange(
+                searchUrl, HttpMethod.GET, searchEntity, java.util.List.class);
+            
+            if (!searchResponse.getStatusCode().is2xxSuccessful() || searchResponse.getBody().isEmpty()) {
+                System.err.println("로그인 통계 업데이트: 사용자 검색 실패 - " + email);
+                return;
+            }
+            
+            // 3. 사용자 정보 가져오기
+            Map<String, Object> user = (Map<String, Object>) searchResponse.getBody().get(0);
+            String userId = (String) user.get("id");
+            Map<String, Object> currentAttributes = (Map<String, Object>) user.get("attributes");
+            
+            if (currentAttributes == null) {
+                currentAttributes = new HashMap<>();
+            }
+            
+            // 4. 로그인 카운트 증가
+            String currentCountStr = "0";
+            if (currentAttributes.containsKey("loginCount")) {
+                java.util.List<String> countList = (java.util.List<String>) currentAttributes.get("loginCount");
+                if (!countList.isEmpty()) {
+                    currentCountStr = countList.get(0);
+                }
+            }
+            
+            int newCount;
+            try {
+                newCount = Integer.parseInt(currentCountStr) + 1;
+            } catch (NumberFormatException e) {
+                newCount = 1;
+            }
+            
+            // 5. 속성 업데이트
+            Map<String, java.util.List<String>> updatedAttributes = new HashMap<>();
+            // 기존 속성들 복사
+            for (Map.Entry<String, Object> entry : currentAttributes.entrySet()) {
+                if (entry.getValue() instanceof java.util.List) {
+                    updatedAttributes.put(entry.getKey(), (java.util.List<String>) entry.getValue());
+                }
+            }
+            
+            // 새로운 로그인 통계 추가
+            updatedAttributes.put("loginCount", java.util.List.of(String.valueOf(newCount)));
+            updatedAttributes.put("lastLoginAt", java.util.List.of(java.time.LocalDateTime.now().toString()));
+            
+            // 6. 사용자 업데이트
+            String updateUrl = internalKeycloakUrl + "/admin/realms/" + realm + "/users/" + userId;
+            
+            HttpHeaders updateHeaders = new HttpHeaders();
+            updateHeaders.setContentType(MediaType.APPLICATION_JSON);
+            updateHeaders.setBearerAuth(accessToken);
+            
+            Map<String, Object> updateData = new HashMap<>();
+            updateData.put("attributes", updatedAttributes);
+            
+            HttpEntity<Map<String, Object>> updateEntity = new HttpEntity<>(updateData, updateHeaders);
+            restTemplate.exchange(updateUrl, HttpMethod.PUT, updateEntity, Void.class);
+            
+            System.out.println("로그인 통계 업데이트 성공: " + email + " (로그인 횟수: " + newCount + ")");
+            
+        } catch (Exception e) {
+            // 통계 업데이트 실패해도 로그인은 성공으로 처리
+            System.err.println("로그인 통계 업데이트 실패 (로그인은 성공): " + e.getMessage());
         }
     }
 }

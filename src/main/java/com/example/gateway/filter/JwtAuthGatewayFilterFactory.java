@@ -17,7 +17,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.security.KeyFactory;
 import java.security.interfaces.RSAPublicKey;
 import java.security.spec.X509EncodedKeySpec;
@@ -36,6 +39,9 @@ public class JwtAuthGatewayFilterFactory extends AbstractGatewayFilterFactory<Jw
     
     @Value("${keycloak.realm:sangsang-plus}")
     private String realm;
+    
+    @Value("${JWT_PUBLIC_KEY_PATH:${jwt.public-key-path:public.pem}}")
+    private String publicKeyPath;
     
     private RSAPublicKey publicKey;
     private long lastKeyFetch = 0;
@@ -67,24 +73,65 @@ public class JwtAuthGatewayFilterFactory extends AbstractGatewayFilterFactory<Jw
                         // Verify JWT with RSA public key
                         Algorithm algorithm = Algorithm.RSA256(key, null);
                         JWTVerifier verifier = JWT.require(algorithm)
-                            .withIssuer(keycloakUrl + "/realms/" + realm)
+                            .withIssuer("http://oauth.buildingbite.com/realms/" + realm)
                             .build();
                         
                         DecodedJWT jwt = verifier.verify(token);
                         
                         // Extract user info from JWT
-                        String email = jwt.getClaim("email").asString();
+                        String email = jwt.getClaim("email") != null ? jwt.getClaim("email").asString() : "";
                         List<String> roles = extractRoles(jwt);
+                        if (roles == null) {
+                            roles = List.of();
+                        }
+                        
+                        // Extract custom attributes from JWT (if available)
+                        String provider = "LOCAL";
+                        String loginCount = "0";
+                        String lastLoginAt = "";
+                        
+                        try {
+                            if (jwt.getClaim("provider") != null) {
+                                provider = jwt.getClaim("provider").asString();
+                            }
+                        } catch (Exception e) {
+                            // Default to LOCAL if claim doesn't exist or is invalid
+                        }
+                        
+                        try {
+                            if (jwt.getClaim("loginCount") != null) {
+                                loginCount = jwt.getClaim("loginCount").asString();
+                            }
+                        } catch (Exception e) {
+                            // Default to 0 if claim doesn't exist or is invalid
+                        }
+                        
+                        try {
+                            if (jwt.getClaim("lastLoginAt") != null) {
+                                lastLoginAt = jwt.getClaim("lastLoginAt").asString();
+                            }
+                        } catch (Exception e) {
+                            // Default to empty string if claim doesn't exist or is invalid
+                        }
                         
                         // Add headers to request
-                        ServerHttpRequest modifiedRequest = request.mutate()
+                        ServerHttpRequest.Builder requestBuilder = request.mutate()
                             .header("X-User-Email", email)
                             .header("X-User-Role", String.join(",", roles))
-                            .build();
+                            .header("X-User-Provider", provider)
+                            .header("X-User-LoginCount", loginCount);
+                        
+                        if (lastLoginAt != null && !lastLoginAt.isEmpty()) {
+                            requestBuilder.header("X-User-LastLoginAt", lastLoginAt);
+                        }
+                        
+                        ServerHttpRequest modifiedRequest = requestBuilder.build();
                         
                         return chain.filter(exchange.mutate().request(modifiedRequest).build());
                         
                     } catch (Exception e) {
+                        System.err.println("JWT Validation Error: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+                        e.printStackTrace();
                         return onError(exchange, "Invalid JWT token: " + e.getMessage(), HttpStatus.UNAUTHORIZED);
                     }
                 });
@@ -129,25 +176,44 @@ public class JwtAuthGatewayFilterFactory extends AbstractGatewayFilterFactory<Jw
     }
     
     private Mono<RSAPublicKey> ensurePublicKey() {
-        // Check if we need to refresh the key
-        if (publicKey != null && (System.currentTimeMillis() - lastKeyFetch) < KEY_CACHE_DURATION) {
+        // Check if we have already loaded the key
+        if (publicKey != null) {
             return Mono.just(publicKey);
         }
         
-        // Use hardcoded public key for now
-        String publicKeyPEM = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsflD9wNONq1gUw37lKbaXpF4hJOrQt46/ahdLiWhWINFFvIO32Ve3Jwpnq5rBAJUW8Tx+kYKg5xNE2cdRRC7N9/9JzBXBf+9XMOwgJzQqgYNpLUqT0LoNAJRYHeZtClHojcwY6UrO7+Bj6r/A/v3m2pwpEIiImxFgM92bIAOQcMVwqOZrkUp7s5EPUhwXWHrbfdMby10L/VQKdcynNUC5xefFAKRSrU2nVQjliPQ0/gdh4vMGVImdHvetklH0I2d4DExeT5tRXyxmPK9xUWoOSM68KSej+cVH1gDdHi20lX6mJjczhiXLL8Ka2elOfLA43C+sKT1kkti3Il1+S+lrwIDAQAB";
-        
-        try {
-            byte[] decoded = Base64.getDecoder().decode(publicKeyPEM);
-            X509EncodedKeySpec spec = new X509EncodedKeySpec(decoded);
-            KeyFactory factory = KeyFactory.getInstance("RSA");
-            publicKey = (RSAPublicKey) factory.generatePublic(spec);
-            lastKeyFetch = System.currentTimeMillis();
-            return Mono.just(publicKey);
-        } catch (Exception e) {
-            return Mono.error(new RuntimeException("Failed to load public key", e));
-        }
+        // Load public key from file
+        return Mono.fromCallable(() -> {
+            try {
+                System.out.println("Loading public key from file: " + publicKeyPath);
+                
+                // Read the PEM file
+                String keyContent = new String(Files.readAllBytes(Paths.get(publicKeyPath)));
+                
+                // Remove PEM headers and footers
+                keyContent = keyContent
+                    .replace("-----BEGIN PUBLIC KEY-----", "")
+                    .replace("-----END PUBLIC KEY-----", "")
+                    .replaceAll("\\s+", "");
+                
+                // Decode the key
+                byte[] decoded = Base64.getDecoder().decode(keyContent);
+                X509EncodedKeySpec spec = new X509EncodedKeySpec(decoded);
+                KeyFactory factory = KeyFactory.getInstance("RSA");
+                RSAPublicKey key = (RSAPublicKey) factory.generatePublic(spec);
+                
+                // Cache the key
+                publicKey = key;
+                lastKeyFetch = System.currentTimeMillis();
+                System.out.println("Successfully loaded public key from file");
+                
+                return key;
+            } catch (Exception e) {
+                System.err.println("Failed to load public key from file: " + e.getMessage());
+                throw new RuntimeException("Unable to load public key from file: " + publicKeyPath, e);
+            }
+        });
     }
+    
     
     private Mono<Void> onError(org.springframework.web.server.ServerWebExchange exchange, 
                                String err, HttpStatus httpStatus) {

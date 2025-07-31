@@ -23,7 +23,12 @@ spring:
             - Path=/api/products/**
           filters:
             - JwtAuth
-            
+        - id: keycloak_admin
+          uri: http://keycloak:8080
+          predicates:
+            - Path=/admin/**, /realms/master/**
+          filters:
+            - StripPrefix=0
       
       # default-filters:
       #   - name: RequestRateLimiter
