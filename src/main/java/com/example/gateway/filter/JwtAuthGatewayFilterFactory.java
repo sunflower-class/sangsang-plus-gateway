@@ -18,11 +18,13 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.io.IOException;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.KeyFactory;
 import java.security.interfaces.RSAPublicKey;
+import java.security.spec.RSAPublicKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
 import java.util.List;
@@ -40,8 +42,8 @@ public class JwtAuthGatewayFilterFactory extends AbstractGatewayFilterFactory<Jw
     @Value("${keycloak.realm:sangsang-plus}")
     private String realm;
     
-    @Value("${JWT_PUBLIC_KEY_PATH:${jwt.public-key-path:public.pem}}")
-    private String publicKeyPath;
+    @Value("${KEYCLOAK_JWKS_URL:http://keycloak:8080/realms/sangsang-plus/protocol/openid-connect/certs}")
+    private String jwksUrl;
     
     private RSAPublicKey publicKey;
     private long lastKeyFetch = 0;
@@ -89,6 +91,7 @@ public class JwtAuthGatewayFilterFactory extends AbstractGatewayFilterFactory<Jw
                         String provider = "LOCAL";
                         String loginCount = "0";
                         String lastLoginAt = "";
+                        String userId = "";
                         
                         try {
                             if (jwt.getClaim("provider") != null) {
@@ -114,6 +117,14 @@ public class JwtAuthGatewayFilterFactory extends AbstractGatewayFilterFactory<Jw
                             // Default to empty string if claim doesn't exist or is invalid
                         }
                         
+                        try {
+                            if (jwt.getClaim("userId") != null) {
+                                userId = jwt.getClaim("userId").asString();
+                            }
+                        } catch (Exception e) {
+                            // Default to empty string if claim doesn't exist or is invalid
+                        }
+                        
                         // Add headers to request
                         ServerHttpRequest.Builder requestBuilder = request.mutate()
                             .header("X-User-Email", email)
@@ -123,6 +134,10 @@ public class JwtAuthGatewayFilterFactory extends AbstractGatewayFilterFactory<Jw
                         
                         if (lastLoginAt != null && !lastLoginAt.isEmpty()) {
                             requestBuilder.header("X-User-LastLoginAt", lastLoginAt);
+                        }
+                        
+                        if (userId != null && !userId.isEmpty()) {
+                            requestBuilder.header("X-User-Id", userId);
                         }
                         
                         ServerHttpRequest modifiedRequest = requestBuilder.build();
@@ -176,42 +191,57 @@ public class JwtAuthGatewayFilterFactory extends AbstractGatewayFilterFactory<Jw
     }
     
     private Mono<RSAPublicKey> ensurePublicKey() {
-        // Check if we have already loaded the key
-        if (publicKey != null) {
+        // Check if we have cached key and it's not expired
+        if (publicKey != null && (System.currentTimeMillis() - lastKeyFetch) < KEY_CACHE_DURATION) {
             return Mono.just(publicKey);
         }
         
-        // Load public key from file
-        return Mono.fromCallable(() -> {
-            try {
-                System.out.println("Loading public key from file: " + publicKeyPath);
-                
-                // Read the PEM file
-                String keyContent = new String(Files.readAllBytes(Paths.get(publicKeyPath)));
-                
-                // Remove PEM headers and footers
-                keyContent = keyContent
-                    .replace("-----BEGIN PUBLIC KEY-----", "")
-                    .replace("-----END PUBLIC KEY-----", "")
-                    .replaceAll("\\s+", "");
-                
-                // Decode the key
-                byte[] decoded = Base64.getDecoder().decode(keyContent);
-                X509EncodedKeySpec spec = new X509EncodedKeySpec(decoded);
-                KeyFactory factory = KeyFactory.getInstance("RSA");
-                RSAPublicKey key = (RSAPublicKey) factory.generatePublic(spec);
-                
-                // Cache the key
-                publicKey = key;
-                lastKeyFetch = System.currentTimeMillis();
-                System.out.println("Successfully loaded public key from file");
-                
-                return key;
-            } catch (Exception e) {
-                System.err.println("Failed to load public key from file: " + e.getMessage());
-                throw new RuntimeException("Unable to load public key from file: " + publicKeyPath, e);
-            }
-        });
+        // Fetch public key from JWKS endpoint
+        return webClient.get()
+            .uri(jwksUrl)
+            .retrieve()
+            .bodyToMono(Map.class)
+            .map(jwks -> {
+                try {
+                    System.out.println("Fetching public key from JWKS: " + jwksUrl);
+                    
+                    // Extract the first key from JWKS
+                    List<Map<String, Object>> keys = (List<Map<String, Object>>) jwks.get("keys");
+                    if (keys == null || keys.isEmpty()) {
+                        throw new RuntimeException("No keys found in JWKS response");
+                    }
+                    
+                    Map<String, Object> key = keys.get(0);
+                    String n = (String) key.get("n");
+                    String e = (String) key.get("e");
+                    
+                    if (n == null || e == null) {
+                        throw new RuntimeException("Invalid key format in JWKS response");
+                    }
+                    
+                    // Decode the modulus and exponent
+                    byte[] nBytes = Base64.getUrlDecoder().decode(n);
+                    byte[] eBytes = Base64.getUrlDecoder().decode(e);
+                    
+                    BigInteger modulus = new BigInteger(1, nBytes);
+                    BigInteger exponent = new BigInteger(1, eBytes);
+                    
+                    // Create RSA public key
+                    RSAPublicKeySpec keySpec = new RSAPublicKeySpec(modulus, exponent);
+                    KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+                    RSAPublicKey rsaPublicKey = (RSAPublicKey) keyFactory.generatePublic(keySpec);
+                    
+                    // Cache the key
+                    publicKey = rsaPublicKey;
+                    lastKeyFetch = System.currentTimeMillis();
+                    System.out.println("Successfully loaded public key from JWKS");
+                    
+                    return rsaPublicKey;
+                } catch (Exception e) {
+                    System.err.println("Failed to load public key from JWKS: " + e.getMessage());
+                    throw new RuntimeException("Unable to load public key from JWKS: " + jwksUrl, e);
+                }
+            });
     }
     
     

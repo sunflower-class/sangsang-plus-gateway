@@ -34,6 +34,7 @@ public class KeycloakMapperService {
             createUserAttributeMapper(adminToken, dedicatedScopeId, "loginCount", "loginCount");
             createUserAttributeMapper(adminToken, dedicatedScopeId, "lastLoginAt", "lastLoginAt");
             createUserAttributeMapper(adminToken, dedicatedScopeId, "createdAt", "createdAt");
+            createUserAttributeMapper(adminToken, dedicatedScopeId, "userId", "userId");
             
             System.out.println("✅ Keycloak 커스텀 매퍼 설정 완료!");
             

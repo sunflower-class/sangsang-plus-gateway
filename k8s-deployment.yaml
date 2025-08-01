@@ -59,6 +59,10 @@ spec:
               name: gateway-secrets
               key: keycloak-client-secret
         
+        # JWT 공개키 설정 - JWKS 엔드포인트 사용
+        - name: KEYCLOAK_JWKS_URL
+          value: "http://keycloak:8080/realms/sangsang-plus/protocol/openid-connect/certs"
+        
         # Google OAuth 설정 (선택사항)
         - name: GOOGLE_CLIENT_ID
           valueFrom:

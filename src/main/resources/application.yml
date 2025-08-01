@@ -26,7 +26,7 @@ spring:
         - id: keycloak_admin
           uri: http://keycloak:8080
           predicates:
-            - Path=/admin/**, /realms/master/**
+            - Path=/admin/**, /realms/**
           filters:
             - StripPrefix=0
       
@@ -100,3 +100,6 @@ logging:
     org.springframework.security: INFO
     org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping: DEBUG
     org.springframework.context.annotation: DEBUG
+    org.springframework.web: DEBUG
+    org.springframework.validation: DEBUG
+    org.springframework.boot.web.servlet.support: DEBUG

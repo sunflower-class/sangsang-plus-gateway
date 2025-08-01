@@ -5,6 +5,7 @@ import java.util.Set;
 
 public class UserResponse {
     private String id;
+    private String userId;
     private String username;
     private String email;
     private String name;
@@ -86,5 +87,13 @@ public class UserResponse {
     
     public void setCreatedAt(LocalDateTime createdAt) { 
         this.createdAt = createdAt; 
+    }
+    
+    public String getUserId() {
+        return userId;
+    }
+    
+    public void setUserId(String userId) {
+        this.userId = userId;
     }
 }

@@ -47,14 +47,27 @@ public class KeycloakAuthController {
 
     @PostMapping("/auth/register")
     public ResponseEntity<AuthResponse> register(@Valid @RequestBody CreateUserRequest request) {
+        System.out.println("=== 회원가입 요청 시작 ===");
+        System.out.println("Email: " + request.getEmail());
+        System.out.println("Name: " + request.getName());
+        System.out.println("Password length: " + (request.getPassword() != null ? request.getPassword().length() : "null"));
         try {
             // 1. 먼저 유저 서비스에 사용자 생성 (옵셔널)
             boolean userServiceSuccess = false;
+            String userId = null;
             try {
+                System.out.println("=== User Service 호출 시작 ===");
+                System.out.println("User Service URL: " + userServiceUrl + "/api/users");
+                
                 HttpHeaders headers = new HttpHeaders();
                 headers.setContentType(MediaType.APPLICATION_JSON);
                 
-                HttpEntity<CreateUserRequest> entity = new HttpEntity<>(request, headers);
+                // User Service는 password를 받지 않으므로 별도의 요청 객체 생성
+                Map<String, String> userServiceRequest = new HashMap<>();
+                userServiceRequest.put("email", request.getEmail());
+                userServiceRequest.put("name", request.getName());
+                
+                HttpEntity<Map<String, String>> entity = new HttpEntity<>(userServiceRequest, headers);
                 ResponseEntity<UserResponse> userResponse = restTemplate.postForEntity(
                     userServiceUrl + "/api/users",
                     entity,
@@ -62,14 +75,21 @@ public class KeycloakAuthController {
                 );
                 
                 userServiceSuccess = userResponse.getStatusCode().is2xxSuccessful();
-                if (!userServiceSuccess) {
+                if (userServiceSuccess && userResponse.getBody() != null) {
+                    userId = userResponse.getBody().getUserId();
+                    System.out.println("User Service에서 생성된 userId: " + userId);
+                } else {
                     System.err.println("User Service 사용자 생성 실패: " + userResponse.getStatusCode());
                 }
             } catch (HttpClientErrorException e) {
                 if (e.getStatusCode() == HttpStatus.CONFLICT) {
                     System.err.println("이미 존재하는 사용자: " + request.getEmail());
-                    return ResponseEntity.status(HttpStatus.CONFLICT)
-                        .body(new AuthResponse(false, "USER_ALREADY_EXISTS", null, null, null));
+                    // 이미 존재하는 경우 userId 조회
+                    userId = getUserIdFromUserService(request.getEmail());
+                    if (userId == null) {
+                        return ResponseEntity.status(HttpStatus.CONFLICT)
+                            .body(new AuthResponse(false, "USER_ALREADY_EXISTS", null, null, null));
+                    }
                 } else {
                     System.err.println("User Service 클라이언트 오류: " + e.getMessage());
                 }
@@ -80,8 +100,8 @@ public class KeycloakAuthController {
                 System.err.println("User Service 호출 중 오류: " + e.getMessage());
             }
             
-            // 2. KeyCloak에 사용자 생성 (필수)
-            String keycloakResult = createKeycloakUser(request);
+            // 2. KeyCloak에 사용자 생성 (필수) - userId 포함
+            String keycloakResult = createKeycloakUser(request, userId);
             if (keycloakResult.equals("USER_EXISTS")) {
                 return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body(new AuthResponse(false, "USER_ALREADY_EXISTS", null, null, null));
@@ -356,6 +376,12 @@ public class KeycloakAuthController {
         return ResponseEntity.ok(Map.of("message", "KeyCloak controller is working!"));
     }
     
+    @PostMapping("/auth/simple-test")
+    public ResponseEntity<Map<String, String>> simplePostTest() {
+        System.out.println("=== Simple POST test endpoint called! ===");
+        return ResponseEntity.ok(Map.of("message", "POST test successful!"));
+    }
+    
     @PostMapping("/auth/setup-mappers")
     public ResponseEntity<Map<String, String>> setupMappers() {
         try {
@@ -537,7 +563,27 @@ public class KeycloakAuthController {
         }
     }
     
-    private String createKeycloakUser(CreateUserRequest request) {
+    private String getUserIdFromUserService(String email) {
+        try {
+            String lookupUrl = userServiceUrl + "/api/users/gateway/lookup/" + email;
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            
+            HttpEntity<Void> entity = new HttpEntity<>(headers);
+            ResponseEntity<Map> response = restTemplate.exchange(
+                lookupUrl, HttpMethod.GET, entity, Map.class);
+            
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                return (String) response.getBody().get("userId");
+            }
+        } catch (Exception e) {
+            System.err.println("User Service에서 userId 조회 실패: " + e.getMessage());
+        }
+        return null;
+    }
+    
+    private String createKeycloakUser(CreateUserRequest request, String userId) {
         try {
             // 1. Service Account 토큰 획득
             String tokenUrl = internalKeycloakUrl + "/realms/" + realm + "/protocol/openid-connect/token";
@@ -581,6 +627,11 @@ public class KeycloakAuthController {
             attributes.put("lastLoginAt", List.of(""));  // 빈 값으로 초기화
             attributes.put("createdAt", List.of(java.time.LocalDateTime.now().toString()));
             
+            // User Service의 userId 추가
+            if (userId != null && !userId.isEmpty()) {
+                attributes.put("userId", List.of(userId));
+            }
+            
             userRepresentation.put("attributes", attributes);
             
             // 사용자 생성
@@ -595,9 +646,9 @@ public class KeycloakAuthController {
             // 3. 비밀번호 설정 (생성된 사용자의 ID 필요)
             // Location 헤더에서 사용자 ID 추출
             String userLocation = createResponse.getHeaders().getLocation().toString();
-            String userId = userLocation.substring(userLocation.lastIndexOf('/') + 1);
+            String keycloakUserId = userLocation.substring(userLocation.lastIndexOf('/') + 1);
             
-            String passwordUrl = internalKeycloakUrl + "/admin/realms/" + realm + "/users/" + userId + "/reset-password";
+            String passwordUrl = internalKeycloakUrl + "/admin/realms/" + realm + "/users/" + keycloakUserId + "/reset-password";
             
             Map<String, Object> passwordData = new HashMap<>();
             passwordData.put("type", "password");
@@ -667,7 +718,7 @@ public class KeycloakAuthController {
             
             // 3. 사용자 정보 가져오기
             Map<String, Object> user = (Map<String, Object>) searchResponse.getBody().get(0);
-            String userId = (String) user.get("id");
+            String keycloakUserId = (String) user.get("id");
             Map<String, Object> currentAttributes = (Map<String, Object>) user.get("attributes");
             
             if (currentAttributes == null) {
@@ -703,8 +754,17 @@ public class KeycloakAuthController {
             updatedAttributes.put("loginCount", java.util.List.of(String.valueOf(newCount)));
             updatedAttributes.put("lastLoginAt", java.util.List.of(java.time.LocalDateTime.now().toString()));
             
+            // userId가 없는 경우 User Service에서 조회하여 추가
+            if (!updatedAttributes.containsKey("userId") || updatedAttributes.get("userId").isEmpty()) {
+                String userServiceUserId = getUserIdFromUserService(email);
+                if (userServiceUserId != null && !userServiceUserId.isEmpty()) {
+                    updatedAttributes.put("userId", java.util.List.of(userServiceUserId));
+                    System.out.println("User Service에서 userId 조회 및 추가: " + userServiceUserId);
+                }
+            }
+            
             // 6. 사용자 업데이트
-            String updateUrl = internalKeycloakUrl + "/admin/realms/" + realm + "/users/" + userId;
+            String updateUrl = internalKeycloakUrl + "/admin/realms/" + realm + "/users/" + keycloakUserId;
             
             HttpHeaders updateHeaders = new HttpHeaders();
             updateHeaders.setContentType(MediaType.APPLICATION_JSON);
