@@ -35,11 +35,19 @@ Spring Cloud Gateway 기반의 API Gateway 서비스로 Keycloak OAuth2/OIDC 인
 | GET | `/api/auth/validate` | 토큰 검증 |
 | GET | `/api/auth/test` | 인증 컨트롤러 테스트 |
 
+### 사용자 관리 (게이트웨이 직접 처리)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| PUT | `/api/auth/users/me` | 현재 사용자 정보 수정 |
+| DELETE | `/api/auth/users/me` | 현재 사용자 계정 삭제 (User Service + Keycloak) |
+| PUT | `/api/auth/users/me/password` | 현재 사용자 패스워드 변경 (Keycloak) |
+
 ### 게이트웨이 라우팅
 
 | Method | Path Pattern | Target Service | Description |
 |--------|-------------|----------------|-------------|
-| ALL | `/api/users/**` | User Service | 사용자 관리 API |
+| ALL | `/api/users/**` | User Service | 기타 사용자 관리 API (게이트웨이 직접 처리 제외) |
 | ALL | `/api/products/**` | Product Service | 제품 관리 API |
 
 ### 소셜 로그인 (단순화된 엔드포인트)
@@ -1044,6 +1052,99 @@ curl -X GET https://oauth.buildingbite.com/api/health
 }
 ```
 
+### 사용자 정보 수정
+```bash
+curl -X PUT https://oauth.buildingbite.com/api/auth/users/me \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkI..." \
+  -d '{
+    "name": "새로운 이름",
+    "phone": "010-1234-5678"
+  }'
+```
+
+**응답 예시 (성공)**
+```json
+{
+  "success": true,
+  "message": "사용자 정보가 성공적으로 수정되었습니다"
+}
+```
+
+**응답 예시 (실패)**
+```json
+{
+  "success": false,
+  "message": "사용자를 찾을 수 없습니다"
+}
+```
+
+### 계정 삭제
+```bash
+curl -X DELETE https://oauth.buildingbite.com/api/auth/users/me \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkI..."
+```
+
+**응답 예시 (성공)**
+```json
+{
+  "success": true,
+  "message": "계정이 성공적으로 삭제되었습니다"
+}
+```
+
+**응답 예시 (부분 성공)**
+```json
+{
+  "success": true,
+  "message": "계정이 부분적으로 삭제되었습니다",
+  "userServiceDeleted": true,
+  "keycloakDeleted": false
+}
+```
+
+**응답 예시 (실패)**
+```json
+{
+  "success": false,
+  "message": "계정 삭제 실패"
+}
+```
+
+### 패스워드 변경
+```bash
+curl -X PUT https://oauth.buildingbite.com/api/auth/users/me/password \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkI..." \
+  -d '{
+    "newPassword": "newpassword123"
+  }'
+```
+
+**응답 예시 (성공)**
+```json
+{
+  "success": true,
+  "message": "패스워드가 성공적으로 변경되었습니다"
+}
+```
+
+**응답 예시 (검증 실패)**
+```json
+{
+  "success": false,
+  "message": "패스워드는 최소 8자 이상이어야 합니다"
+}
+```
+
+**응답 예시 (실패)**
+```json
+{
+  "success": false,
+  "message": "패스워드 변경에 실패했습니다"
+}
+```
+
 ### JWT 토큰 사용 예시
 모든 인증이 필요한 API는 다음과 같이 Bearer 토큰을 포함해야 합니다:
 ```bash
@@ -1115,55 +1216,6 @@ Keycloak에서 발급하는 JWT 토큰의 구조:
 - HTTP-Only Secure Cookie로 저장 권장
 - 30일 유효 기간 (설정 가능)
 - Access Token 재발급에만 사용
-
-## 마이그레이션 가이드
-
-기존 JWT 기반 인증에서 Keycloak으로 마이그레이션:
-
-### 1. 기존 사용자 데이터 마이그레이션
-```bash
-# Keycloak Admin API를 사용한 사용자 일괄 등록
-POST /admin/realms/{realm}/users
-```
-
-### 2. 클라이언트 코드 변경
-```javascript
-// 기존 (개별 JWT 서비스)
-const response = await fetch('/api/some-service/login', {
-  method: 'POST',
-  body: JSON.stringify({ email, password })
-});
-
-// 변경 (중앙집중식 Keycloak 인증)
-const response = await fetch('/api/auth/login', {
-  method: 'POST',
-  body: JSON.stringify({ email, password })
-});
-```
-
-### 3. 토큰 검증 로직 변경
-- 기존: 각 마이크로서비스에서 개별적으로 JWT 검증
-- 변경: 게이트웨이에서 중앙 집중식 JWT 검증 및 헤더 전달
-
-### 4. 아키텍처 변경사항
-
-#### 이전 아키텍처
-```
-Client → Gateway (단순 프록시) → User Service (JWT 검증)
-                                → Product Service (JWT 검증)
-```
-
-#### 현재 아키텍처  
-```
-Client → Gateway (JWT 검증 + 헤더 추가) → User Service (헤더 사용)
-                                        → Product Service (헤더 사용)
-```
-
-**장점:**
-- 중앙 집중식 인증 관리
-- 마이크로서비스의 JWT 의존성 제거
-- 일관된 사용자 정보 전달
-- 토큰 검증 로직 단순화
 
 ## 기여 방법
 

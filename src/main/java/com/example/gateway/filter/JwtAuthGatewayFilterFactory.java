@@ -65,6 +65,14 @@ public class JwtAuthGatewayFilterFactory extends AbstractGatewayFilterFactory<Jw
             
             if (token == null) {
                 // No token provided - pass through without authentication headers
+                System.out.println("=== No Token Request ===");
+                System.out.println("URI: " + request.getURI());
+                System.out.println("Method: " + request.getMethod());
+                System.out.println("Original Headers:");
+                request.getHeaders().forEach((headerName, values) -> {
+                    System.out.println("  " + headerName + ": " + String.join(", ", values));
+                });
+                System.out.println("=== End No Token Request ===");
                 return chain.filter(exchange);
             }
 
@@ -87,60 +95,36 @@ public class JwtAuthGatewayFilterFactory extends AbstractGatewayFilterFactory<Jw
                             roles = List.of();
                         }
                         
-                        // Extract custom attributes from JWT (if available)
-                        String provider = "LOCAL";
-                        String loginCount = "0";
-                        String lastLoginAt = "";
+                        // Extract User Service userId from JWT claims
                         String userId = "";
-                        
-                        try {
-                            if (jwt.getClaim("provider") != null) {
-                                provider = jwt.getClaim("provider").asString();
-                            }
-                        } catch (Exception e) {
-                            // Default to LOCAL if claim doesn't exist or is invalid
-                        }
-                        
-                        try {
-                            if (jwt.getClaim("loginCount") != null) {
-                                loginCount = jwt.getClaim("loginCount").asString();
-                            }
-                        } catch (Exception e) {
-                            // Default to 0 if claim doesn't exist or is invalid
-                        }
-                        
-                        try {
-                            if (jwt.getClaim("lastLoginAt") != null) {
-                                lastLoginAt = jwt.getClaim("lastLoginAt").asString();
-                            }
-                        } catch (Exception e) {
-                            // Default to empty string if claim doesn't exist or is invalid
-                        }
-                        
                         try {
                             if (jwt.getClaim("userId") != null) {
                                 userId = jwt.getClaim("userId").asString();
                             }
                         } catch (Exception e) {
-                            // Default to empty string if claim doesn't exist or is invalid
+                            System.err.println("Failed to extract userId from JWT: " + e.getMessage());
                         }
                         
                         // Add headers to request
                         ServerHttpRequest.Builder requestBuilder = request.mutate()
                             .header("X-User-Email", email)
-                            .header("X-User-Role", String.join(",", roles))
-                            .header("X-User-Provider", provider)
-                            .header("X-User-LoginCount", loginCount);
-                        
-                        if (lastLoginAt != null && !lastLoginAt.isEmpty()) {
-                            requestBuilder.header("X-User-LastLoginAt", lastLoginAt);
-                        }
+                            .header("X-User-Role", String.join(",", roles));
                         
                         if (userId != null && !userId.isEmpty()) {
                             requestBuilder.header("X-User-Id", userId);
                         }
                         
                         ServerHttpRequest modifiedRequest = requestBuilder.build();
+                        
+                        // Log downstream request details
+                        System.out.println("=== Downstream Request Details ===");
+                        System.out.println("URI: " + modifiedRequest.getURI());
+                        System.out.println("Method: " + modifiedRequest.getMethod());
+                        System.out.println("Headers being sent to downstream:");
+                        modifiedRequest.getHeaders().forEach((headerName, values) -> {
+                            System.out.println("  " + headerName + ": " + String.join(", ", values));
+                        });
+                        System.out.println("=== End Downstream Request Details ===");
                         
                         return chain.filter(exchange.mutate().request(modifiedRequest).build());
                         
