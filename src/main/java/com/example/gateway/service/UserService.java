@@ -66,22 +66,26 @@ public class UserService {
     /**
      * User Service에서 사용자 삭제 (userId 기반)
      */
-    public boolean deleteUserInUserService(String userId, String jwtToken, String email) {
+    public boolean deleteUserInUserService(String userId) {
+        return deleteUserInUserService(userId, null, null);
+    }
+    
+    /**
+     * User Service에서 사용자 삭제 (userId 기반, 헤더 포함)
+     */
+    public boolean deleteUserInUserService(String userId, String userEmail, String userIdForHeader) {
         try {
             HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setBearerAuth(jwtToken);
-            // Gateway에서 User Service로 전달하는 사용자 정보 헤더
-            headers.set("X-User-Email", email);
-            headers.set("X-User-Role", "USER");
-            headers.set("X-User-Id", userId);
             
-            System.out.println("=== User Service DELETE 요청 헤더 ===");
-            System.out.println("Authorization: Bearer " + jwtToken.substring(0, 50) + "...");
-            System.out.println("X-User-Email: " + email);
-            System.out.println("X-User-Role: USER");
-            System.out.println("X-User-Id: " + userId);
-            System.out.println("Request URL: " + userServiceUrl + "/api/users/" + userId);
+            // X-User-Id와 X-User-Email 헤더 추가 (User Service가 요구하는 헤더)
+            if (userIdForHeader != null && !userIdForHeader.isEmpty()) {
+                headers.set("X-User-Id", userIdForHeader);
+                System.out.println("X-User-Id 헤더 추가함: " + userIdForHeader);
+            }
+            if (userEmail != null && !userEmail.isEmpty()) {
+                headers.set("X-User-Email", userEmail);
+                System.out.println("X-User-Email 헤더 추가함: " + userEmail);
+            }
             
             HttpEntity<Void> entity = new HttpEntity<>(headers);
             
@@ -97,7 +101,7 @@ public class UserService {
             if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
                 return true; // 이미 없으면 성공으로 처리
             }
-            System.err.println("User Service 삭제 실패: " + e.getMessage());
+            System.err.println("User Service 아이디 기반 삭제 실패: " + e.getMessage());
         } catch (Exception e) {
             System.err.println("User Service 연결 실패: " + e.getMessage());
         }
@@ -135,9 +139,26 @@ public class UserService {
      * User Service에서 사용자 정보 수정 (userId 기반)
      */
     public boolean updateUserInUserService(String userId, Map<String, String> updateData) {
+        return updateUserInUserService(userId, updateData, null, null);
+    }
+    
+    /**
+     * User Service에서 사용자 정보 수정 (userId 기반, 헤더 포함)
+     */
+    public boolean updateUserInUserService(String userId, Map<String, String> updateData, String userEmail, String userIdForHeader) {
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
+            
+            // X-User-Id와 X-User-Email 헤더 추가 (User Service가 요구하는 헤더)
+            if (userIdForHeader != null && !userIdForHeader.isEmpty()) {
+                headers.set("X-User-Id", userIdForHeader);
+                System.out.println("X-User-Id 헤더 추가함: " + userIdForHeader);
+            }
+            if (userEmail != null && !userEmail.isEmpty()) {
+                headers.set("X-User-Email", userEmail);
+                System.out.println("X-User-Email 헤더 추가함: " + userEmail);
+            }
             
             HttpEntity<Map<String, String>> entity = new HttpEntity<>(updateData, headers);
             ResponseEntity<Void> response = restTemplate.exchange(
@@ -380,6 +401,72 @@ public class UserService {
             System.err.println("Keycloak 패스워드 변경 실패: " + e.getMessage());
             return false;
         }
+    }
+    
+    /**
+     * Keycloak에서 이메일로 사용자 찾아서 userId 속성 직접 반환
+     */
+    public String findKeycloakUserByEmail(String email) {
+        try {
+            String accessToken = getKeycloakAdminToken();
+            if (accessToken == null) return null;
+            
+            String searchUrl = internalKeycloakUrl + "/admin/realms/" + realm + "/users?email=" + email;
+            
+            HttpHeaders searchHeaders = new HttpHeaders();
+            searchHeaders.setBearerAuth(accessToken);
+            
+            HttpEntity<Void> searchEntity = new HttpEntity<>(searchHeaders);
+            ResponseEntity<List> searchResponse = restTemplate.exchange(
+                searchUrl, HttpMethod.GET, searchEntity, List.class);
+            
+            if (!searchResponse.getStatusCode().is2xxSuccessful() || searchResponse.getBody().isEmpty()) {
+                return null;
+            }
+            
+            Map<String, Object> user = (Map<String, Object>) searchResponse.getBody().get(0);
+            Map<String, Object> attributes = (Map<String, Object>) user.get("attributes");
+            
+            // Keycloak 속성에서 userId 직접 추출
+            if (attributes != null && attributes.containsKey("userId")) {
+                List<String> userIdList = (List<String>) attributes.get("userId");
+                if (userIdList != null && !userIdList.isEmpty()) {
+                    String userId = userIdList.get(0);
+                    System.out.println("Found userId in Keycloak attributes: " + userId);
+                    return userId;
+                }
+            }
+            
+            System.out.println("No userId attribute found in Keycloak user");
+            return null;
+            
+        } catch (Exception e) {
+            System.err.println("Keycloak에서 사용자 찾기 실패: " + e.getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * Keycloak ID로 UserService에서 내부 userId 조회
+     */
+    public String getUserIdByKeycloakId(String keycloakUserId) {
+        try {
+            String lookupUrl = userServiceUrl + "/api/users/gateway/lookup-by-keycloak/" + keycloakUserId;
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            
+            HttpEntity<Void> entity = new HttpEntity<>(headers);
+            ResponseEntity<Map> response = restTemplate.exchange(
+                lookupUrl, HttpMethod.GET, entity, Map.class);
+            
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                return (String) response.getBody().get("userId");
+            }
+        } catch (Exception e) {
+            System.err.println("UserService에서 Keycloak ID로 userId 조회 실패: " + e.getMessage());
+        }
+        return null;
     }
     
     /**

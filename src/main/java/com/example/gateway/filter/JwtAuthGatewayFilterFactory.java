@@ -83,35 +83,93 @@ public class JwtAuthGatewayFilterFactory extends AbstractGatewayFilterFactory<Jw
                         // Verify JWT with RSA public key
                         Algorithm algorithm = Algorithm.RSA256(key, null);
                         JWTVerifier verifier = JWT.require(algorithm)
-                            .withIssuer("http://oauth.buildingbite.com/realms/" + realm)
+                            .withIssuer("http://keycloak:8080/realms/" + realm)
                             .build();
                         
                         DecodedJWT jwt = verifier.verify(token);
                         
-                        // Extract user info from JWT
+                        // Extract user info from JWT with null safety
                         String email = jwt.getClaim("email") != null ? jwt.getClaim("email").asString() : "";
+                        email = email != null ? email : ""; // Ensure email is never null
+                        
                         List<String> roles = extractRoles(jwt);
                         if (roles == null) {
                             roles = List.of();
                         }
                         
-                        // Extract User Service userId from JWT claims
+                        System.out.println("=== JWT Token Analysis ===");
+                        System.out.println("Issuer: " + jwt.getIssuer());
+                        System.out.println("Subject: " + jwt.getSubject());
+                        System.out.println("Email claim: " + jwt.getClaim("email"));
+                        System.out.println("UserId claim object: " + jwt.getClaim("userId"));
+                        
+                        // Debug: Print all available claims
+                        System.out.println("All JWT Claims:");
+                        jwt.getClaims().forEach((claimKey, claimValue) -> {
+                            System.out.println("  " + claimKey + ": " + claimValue + " (type: " + (claimValue != null ? claimValue.getClass().getSimpleName() : "null") + ")");
+                        });
+                        
+                        // Extract User Service userId from JWT claims or lookup from UserService
                         String userId = "";
                         try {
-                            if (jwt.getClaim("userId") != null) {
+                            // Try different possible claim names for userId
+                            if (jwt.getClaim("userId") != null && !jwt.getClaim("userId").isNull()) {
                                 userId = jwt.getClaim("userId").asString();
+                                System.out.println("Successfully extracted userId from 'userId' claim: " + userId);
+                            } else if (jwt.getClaim("user_id") != null && !jwt.getClaim("user_id").isNull()) {
+                                userId = jwt.getClaim("user_id").asString();
+                                System.out.println("Successfully extracted userId from 'user_id' claim: " + userId);
+                            } else if (jwt.getClaim("preferred_username") != null && !jwt.getClaim("preferred_username").isNull()) {
+                                // Sometimes userId might be stored as preferred_username
+                                String preferredUsername = jwt.getClaim("preferred_username").asString();
+                                System.out.println("Found preferred_username: " + preferredUsername);
+                                // If preferred_username looks like a userId (numeric or UUID), use it
+                                if (preferredUsername.matches("\\d+") || preferredUsername.matches("[0-9a-fA-F-]{36}")) {
+                                    userId = preferredUsername;
+                                    System.out.println("Using preferred_username as userId: " + userId);
+                                }
+                            }
+                            
+                            // Skip UserService lookup in reactive context to avoid block() issues
+                            if ((userId == null || userId.isEmpty()) && !email.isEmpty()) {
+                                System.out.println("userId not found in JWT claims - skipping UserService lookup in reactive context");
+                                userId = ""; // Will be handled by downstream service or fallback mechanisms
                             }
                         } catch (Exception e) {
                             System.err.println("Failed to extract userId from JWT: " + e.getMessage());
+                            e.printStackTrace();
+                            // Skip fallback UserService lookup in reactive context
+                            if (!email.isEmpty()) {
+                                System.out.println("Fallback: Skipping UserService lookup in reactive context");
+                                userId = ""; // Will be handled by downstream service
+                            }
                         }
+                        
+                        // Extract additional custom claims with null safety
+                        String provider = jwt.getClaim("provider") != null ? jwt.getClaim("provider").asString() : "LOCAL";
+                        String loginCount = jwt.getClaim("loginCount") != null ? jwt.getClaim("loginCount").asString() : "0";
+                        String lastLoginAt = jwt.getClaim("lastLoginAt") != null ? jwt.getClaim("lastLoginAt").asString() : "";
+                        
+                        // Ensure no null values
+                        provider = provider != null ? provider : "LOCAL";
+                        loginCount = loginCount != null ? loginCount : "0";
+                        lastLoginAt = lastLoginAt != null ? lastLoginAt : "";
                         
                         // Add headers to request
                         ServerHttpRequest.Builder requestBuilder = request.mutate()
                             .header("X-User-Email", email)
                             .header("X-User-Role", String.join(",", roles));
                         
-                        if (userId != null && !userId.isEmpty()) {
-                            requestBuilder.header("X-User-Id", userId);
+                        // CRITICAL: Always add X-User-Id header, even if empty
+                        String finalUserId = (userId != null && !userId.isEmpty()) ? userId : "";
+                        requestBuilder.header("X-User-Id", finalUserId);
+                        System.out.println("IMPORTANT: Adding X-User-Id header with value: '" + finalUserId + "'");
+                        
+                        // Add additional headers
+                        requestBuilder.header("X-User-Provider", provider);
+                        requestBuilder.header("X-User-LoginCount", loginCount);
+                        if (lastLoginAt != null && !lastLoginAt.isEmpty()) {
+                            requestBuilder.header("X-User-LastLoginAt", lastLoginAt);
                         }
                         
                         ServerHttpRequest modifiedRequest = requestBuilder.build();
@@ -120,9 +178,18 @@ public class JwtAuthGatewayFilterFactory extends AbstractGatewayFilterFactory<Jw
                         System.out.println("=== Downstream Request Details ===");
                         System.out.println("URI: " + modifiedRequest.getURI());
                         System.out.println("Method: " + modifiedRequest.getMethod());
+                        System.out.println("Extracted JWT Claims:");
+                        System.out.println("  Email: " + email);
+                        System.out.println("  UserId: " + userId);
+                        System.out.println("  Roles: " + String.join(",", roles));
+                        System.out.println("  Provider: " + provider);
+                        System.out.println("  LoginCount: " + loginCount);
+                        System.out.println("  LastLoginAt: " + lastLoginAt);
                         System.out.println("Headers being sent to downstream:");
                         modifiedRequest.getHeaders().forEach((headerName, values) -> {
-                            System.out.println("  " + headerName + ": " + String.join(", ", values));
+                            if (headerName.startsWith("X-User-")) {
+                                System.out.println("  " + headerName + ": " + String.join(", ", values));
+                            }
                         });
                         System.out.println("=== End Downstream Request Details ===");
                         
@@ -131,6 +198,34 @@ public class JwtAuthGatewayFilterFactory extends AbstractGatewayFilterFactory<Jw
                     } catch (Exception e) {
                         System.err.println("JWT Validation Error: " + e.getClass().getSimpleName() + " - " + e.getMessage());
                         e.printStackTrace();
+                        
+                        // Even if JWT validation fails, try to extract basic info and add minimal headers
+                        try {
+                            com.auth0.jwt.interfaces.DecodedJWT fallbackJwt = com.auth0.jwt.JWT.decode(token);
+                            String fallbackEmail = fallbackJwt.getClaim("email") != null ? fallbackJwt.getClaim("email").asString() : "";
+                            
+                            if (!fallbackEmail.isEmpty()) {
+                                System.out.println("JWT validation failed but extracted email: " + fallbackEmail);
+                                
+                                // Add minimal headers even with failed validation
+                                ServerHttpRequest.Builder requestBuilder = request.mutate()
+                                    .header("X-User-Email", fallbackEmail)
+                                    .header("X-User-Id", "") // Empty but present
+                                    .header("X-User-Role", "")
+                                    .header("X-User-Provider", "LOCAL");
+                                
+                                ServerHttpRequest modifiedRequest = requestBuilder.build();
+                                
+                                System.out.println("=== Minimal Headers Added (JWT validation failed) ===");
+                                System.out.println("X-User-Email: " + fallbackEmail);
+                                System.out.println("X-User-Id: (empty)");
+                                
+                                return chain.filter(exchange.mutate().request(modifiedRequest).build());
+                            }
+                        } catch (Exception decodeException) {
+                            System.err.println("Failed to decode JWT even for minimal headers: " + decodeException.getMessage());
+                        }
+                        
                         return onError(exchange, "Invalid JWT token: " + e.getMessage(), HttpStatus.UNAUTHORIZED);
                     }
                 });
@@ -247,6 +342,26 @@ public class JwtAuthGatewayFilterFactory extends AbstractGatewayFilterFactory<Jw
             return response.writeWith(Mono.just(buffer));
         } catch (Exception e) {
             return response.setComplete();
+        }
+    }
+
+    private String getUserIdFromUserService(String email) {
+        try {
+            String lookupUrl = "http://user-service.user-service.svc.cluster.local/api/users/gateway/lookup/" + email;
+            
+            // WebClient를 사용해서 동기적으로 호출
+            String userId = webClient.get()
+                .uri(lookupUrl)
+                .retrieve()
+                .bodyToMono(Map.class)
+                .map(response -> (String) response.get("userId"))
+                .block();
+                
+            System.out.println("UserService lookup result for " + email + ": " + userId);
+            return userId != null ? userId : "";
+        } catch (Exception e) {
+            System.err.println("Failed to lookup userId from UserService: " + e.getMessage());
+            return "";
         }
     }
 

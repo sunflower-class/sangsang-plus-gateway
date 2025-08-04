@@ -17,13 +17,10 @@ spec:
       containers:
       - name: gateway
         image: buildingbite/sangsangplus-gateway:dev
+        imagePullPolicy: Always
         ports:
         - containerPort: 8080
         env:
-        # Kafka 설정
-        - name: KAFKA_BOOTSTRAP_SERVERS
-          value: "kafka:9092"
-        
         # User 서비스 URL
         - name: USER_SERVICE_URL
           value: "http://user-service.user-service.svc.cluster.local"

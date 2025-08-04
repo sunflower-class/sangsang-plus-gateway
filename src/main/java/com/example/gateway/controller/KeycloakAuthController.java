@@ -145,6 +145,7 @@ public class KeycloakAuthController {
             body.add("client_secret", clientSecret);
             body.add("username", request.getEmail());
             body.add("password", request.getPassword());
+            body.add("scope", "openid email profile userId");
 
             HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(body, headers);
             ResponseEntity<Map> response = restTemplate.postForEntity(tokenUrl, entity, Map.class);
@@ -382,6 +383,70 @@ public class KeycloakAuthController {
         return ResponseEntity.ok(Map.of("message", "POST test successful!"));
     }
     
+    @GetMapping("/auth/debug-token")
+    public ResponseEntity<Map<String, Object>> debugToken(@RequestHeader(value = "Authorization", required = false) String authHeader) {
+        Map<String, Object> debugInfo = new HashMap<>();
+        
+        try {
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                debugInfo.put("error", "Missing or invalid Authorization header");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(debugInfo);
+            }
+            
+            String token = authHeader.substring(7);
+            com.auth0.jwt.interfaces.DecodedJWT jwt = com.auth0.jwt.JWT.decode(token);
+            
+            // Basic token info
+            debugInfo.put("issuer", jwt.getIssuer());
+            debugInfo.put("subject", jwt.getSubject());
+            debugInfo.put("expiresAt", jwt.getExpiresAt());
+            
+            // All claims
+            Map<String, Object> claims = new HashMap<>();
+            jwt.getClaims().forEach((key, claim) -> {
+                if (claim != null) {
+                    Object value = null;
+                    try {
+                        if (!claim.isNull()) {
+                            if (claim.asMap() != null) {
+                                value = claim.asMap();
+                            } else if (claim.asList(Object.class) != null) {
+                                value = claim.asList(Object.class);
+                            } else if (claim.asString() != null) {
+                                value = claim.asString();
+                            } else if (claim.asInt() != null) {
+                                value = claim.asInt();
+                            } else if (claim.asLong() != null) {
+                                value = claim.asLong();
+                            } else if (claim.asBoolean() != null) {
+                                value = claim.asBoolean();
+                            } else if (claim.asDate() != null) {
+                                value = claim.asDate();
+                            }
+                        }
+                    } catch (Exception e) {
+                        value = "Error parsing claim: " + e.getMessage();
+                    }
+                    claims.put(key, value);
+                }
+            });
+            debugInfo.put("claims", claims);
+            
+            // Specific userId checks
+            Map<String, Object> userIdInfo = new HashMap<>();
+            userIdInfo.put("userId_claim", jwt.getClaim("userId").isNull() ? null : jwt.getClaim("userId").asString());
+            userIdInfo.put("user_id_claim", jwt.getClaim("user_id").isNull() ? null : jwt.getClaim("user_id").asString());
+            userIdInfo.put("preferred_username", jwt.getClaim("preferred_username").isNull() ? null : jwt.getClaim("preferred_username").asString());
+            debugInfo.put("userId_analysis", userIdInfo);
+            
+            return ResponseEntity.ok(debugInfo);
+            
+        } catch (Exception e) {
+            debugInfo.put("error", "Failed to decode token: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(debugInfo);
+        }
+    }
+    
     @PostMapping("/auth/setup-mappers")
     public ResponseEntity<Map<String, String>> setupMappers() {
         try {
@@ -398,7 +463,7 @@ public class KeycloakAuthController {
                 ));
         }
     }
-
+    
     // 단순화된 소셜 로그인 엔드포인트
     @GetMapping("/auth/{provider}")
     public ResponseEntity<Void> socialLoginRedirect(@PathVariable String provider) {
@@ -630,7 +695,16 @@ public class KeycloakAuthController {
             // User Service의 userId 추가
             if (userId != null && !userId.isEmpty()) {
                 attributes.put("userId", List.of(userId));
+                System.out.println("✅ Keycloak 사용자에 userId 추가: " + userId);
+            } else {
+                System.out.println("⚠️ userId가 null이거나 비어있음 - User Service 연동 확인 필요");
             }
+            
+            System.out.println("=== Keycloak 사용자 생성 시 attributes ===");
+            attributes.forEach((key, value) -> {
+                System.out.println("  " + key + ": " + value);
+            });
+            System.out.println("=== End attributes ===");
             
             userRepresentation.put("attributes", attributes);
             

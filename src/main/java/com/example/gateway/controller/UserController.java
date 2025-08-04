@@ -6,6 +6,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
 
 import java.util.Map;
 
@@ -16,28 +18,61 @@ public class UserController {
     @Autowired
     private UserService userService;
     
+    @Autowired
+    private WebClient.Builder webClientBuilder;
+    
     @PutMapping("/me")
     public ResponseEntity<Map<String, Object>> updateCurrentUser(
             @RequestHeader("Authorization") String authHeader,
+            @RequestHeader(value = "X-User-Id", required = false) String userIdHeader,
+            @RequestHeader(value = "X-User-Email", required = false) String emailHeader,
             @RequestBody Map<String, String> updateData) {
         
         try {
-            // JWT에서 사용자 정보 추출
-            String token = authHeader.substring(7); // "Bearer " 제거
-            com.auth0.jwt.interfaces.DecodedJWT jwt;
+            // JWT에서 직접 사용자 정보 추출 (내부 라우트이므로 헤더에 의존하지 않음)
+            if (authHeader == null || !authHeader.startsWith("Bearer ") || authHeader.length() <= 7) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of(
+                        "success", false,
+                        "message", "Invalid Authorization header"
+                    ));
+            }
+            
+            String token = authHeader.substring(7);
             String email;
+            String userId;
             
             try {
-                jwt = com.auth0.jwt.JWT.decode(token);
-                email = jwt.getClaim("email").asString();
+                com.auth0.jwt.interfaces.DecodedJWT jwt = com.auth0.jwt.JWT.decode(token);
+                email = jwt.getClaim("email") != null ? jwt.getClaim("email").asString() : "";
                 
-                if (email == null || email.isEmpty()) {
-                    return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                        .body(Map.of(
-                            "success", false,
-                            "message", "Invalid token: email claim missing"
-                        ));
+                // JWT에서 userId 클레임 추출 시도 (실패해도 계속 진행)
+                userId = "";
+                try {
+                    if (jwt.getClaim("userId") != null && !jwt.getClaim("userId").isNull()) {
+                        userId = jwt.getClaim("userId").asString();
+                        System.out.println("JWT에서 userId 추출 성공: " + userId);
+                    } else if (jwt.getClaim("user_id") != null && !jwt.getClaim("user_id").isNull()) {
+                        userId = jwt.getClaim("user_id").asString();
+                        System.out.println("JWT에서 user_id 추출 성공: " + userId);
+                    } else if (jwt.getClaim("preferred_username") != null && !jwt.getClaim("preferred_username").isNull()) {
+                        String preferredUsername = jwt.getClaim("preferred_username").asString();
+                        if (preferredUsername.matches("\\d+") || preferredUsername.matches("[0-9a-fA-F-]{36}")) {
+                            userId = preferredUsername;
+                            System.out.println("JWT에서 preferred_username을 userId로 사용: " + userId);
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println("JWT에서 userId 추출 실패 (계속 진행): " + e.getMessage());
                 }
+                
+                // JWT에서 userId를 찾지 못했으면 UserService에서 조회
+                if (userId == null || userId.isEmpty()) {
+                    System.out.println("JWT에서 userId를 찾지 못함. UserService에서 조회 시도...");
+                    userId = getUserIdFromUserService(email);
+                    System.out.println("UserService에서 조회한 userId: " + userId);
+                }
+                
             } catch (Exception jwtError) {
                 System.err.println("JWT parsing error: " + jwtError.getMessage());
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
@@ -47,12 +82,36 @@ public class UserController {
                     ));
             }
             
+            if (email == null || email.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of(
+                        "success", false,
+                        "message", "Missing user email in JWT"
+                    ));
+            }
+            
+            if (userId == null || userId.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of(
+                        "success", false,
+                        "message", "Unable to determine user ID"
+                    ));
+            }
+            
             System.out.println("=== 사용자 정보 수정 요청 ===");
             System.out.println("Email: " + email);
+            System.out.println("User ID: " + userId);
             System.out.println("Update data: " + updateData);
             
-            // User Service에서 이메일 기반으로 정보 수정
-            boolean updated = userService.updateUserByEmailInUserService(email, updateData);
+            // User Service에서 직접 정보 수정 (헤더 포함)
+            boolean updated = false;
+            try {
+                updated = userService.updateUserInUserService(userId, updateData, email, userId);
+                System.out.println("User Service 직접 수정 결과 (헤더 포함): " + updated);
+            } catch (Exception e) {
+                System.err.println("User Service 직접 수정 실패: " + e.getMessage());
+                updated = false;
+            }
             
             if (updated) {
                 return ResponseEntity.ok(Map.of(
@@ -79,10 +138,12 @@ public class UserController {
     
     @DeleteMapping("/me")
     public ResponseEntity<Map<String, Object>> deleteCurrentUser(
-            @RequestHeader("Authorization") String authHeader) {
+            @RequestHeader("Authorization") String authHeader,
+            @RequestHeader(value = "X-User-Id", required = false) String userIdHeader,
+            @RequestHeader(value = "X-User-Email", required = false) String emailHeader) {
         
         try {
-            // JWT에서 사용자 정보 추출
+            // JWT에서 직접 사용자 정보 추출 (헤더에 의존하지 않음)
             if (authHeader == null || !authHeader.startsWith("Bearer ") || authHeader.length() <= 7) {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of(
@@ -90,23 +151,44 @@ public class UserController {
                         "message", "Invalid Authorization header"
                     ));
             }
-            String token = authHeader.substring(7); // "Bearer " 제거
-            com.auth0.jwt.interfaces.DecodedJWT jwt;
-            String email;
+            
+            String token = authHeader.substring(7);
             String keycloakUserId;
+            String email;
+            String userId;
             
             try {
-                jwt = com.auth0.jwt.JWT.decode(token);
-                email = jwt.getClaim("email").asString();
+                com.auth0.jwt.interfaces.DecodedJWT jwt = com.auth0.jwt.JWT.decode(token);
                 keycloakUserId = jwt.getSubject();
+                email = jwt.getClaim("email") != null ? jwt.getClaim("email").asString() : "";
                 
-                if (email == null || email.isEmpty()) {
-                    return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                        .body(Map.of(
-                            "success", false,
-                            "message", "Invalid token: email claim missing"
-                        ));
+                // JWT에서 userId 클레임 추출 시도 (실패해도 계속 진행)
+                userId = "";
+                try {
+                    if (jwt.getClaim("userId") != null && !jwt.getClaim("userId").isNull()) {
+                        userId = jwt.getClaim("userId").asString();
+                        System.out.println("JWT에서 userId 추출 성공: " + userId);
+                    } else if (jwt.getClaim("user_id") != null && !jwt.getClaim("user_id").isNull()) {
+                        userId = jwt.getClaim("user_id").asString();
+                        System.out.println("JWT에서 user_id 추출 성공: " + userId);
+                    } else if (jwt.getClaim("preferred_username") != null && !jwt.getClaim("preferred_username").isNull()) {
+                        String preferredUsername = jwt.getClaim("preferred_username").asString();
+                        if (preferredUsername.matches("\\d+") || preferredUsername.matches("[0-9a-fA-F-]{36}")) {
+                            userId = preferredUsername;
+                            System.out.println("JWT에서 preferred_username을 userId로 사용: " + userId);
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println("JWT에서 userId 추출 실패 (계속 진행): " + e.getMessage());
                 }
+                
+                // JWT에서 userId를 찾지 못했으면 UserService에서 조회
+                if (userId == null || userId.isEmpty()) {
+                    System.out.println("JWT에서 userId를 찾지 못함. UserService에서 조회 시도...");
+                    userId = getUserIdFromUserService(email);
+                    System.out.println("UserService에서 조회한 userId: " + userId);
+                }
+                
             } catch (Exception jwtError) {
                 System.err.println("JWT parsing error: " + jwtError.getMessage());
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
@@ -116,13 +198,30 @@ public class UserController {
                     ));
             }
             
-            System.out.println("=== 계정 삭제 요청 ===");
-            System.out.println("Email: " + email);
-            System.out.println("Keycloak User ID: " + keycloakUserId);
+            System.out.println("=== 계정 삭제 요청 (JWT 직접 파싱) ===");
+            System.out.println("X-User-Email header: " + emailHeader);
+            System.out.println("X-User-Id header: " + userIdHeader);
+            System.out.println("Email from JWT: " + email);
+            System.out.println("UserId from JWT: " + userId);
+            System.out.println("Keycloak User ID (from JWT): " + keycloakUserId);
             
-            // 1. User Service에서 이메일 기반으로 직접 삭제
-            boolean userServiceDeleted = userService.deleteUserByEmailInUserService(email);
-            System.out.println("User Service 이메일 기반 삭제 결과: " + userServiceDeleted);
+            if (email == null || email.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of(
+                        "success", false,
+                        "message", "Missing user email in JWT token"
+                    ));
+            }
+            
+            // 1. User Service에서 직접 삭제 (헤더 포함)
+            boolean userServiceDeleted = false;
+            try {
+                userServiceDeleted = userService.deleteUserInUserService(userId, email, userId);
+                System.out.println("User Service 직접 삭제 결과 (헤더 포함): " + userServiceDeleted);
+            } catch (Exception e) {
+                System.err.println("User Service 직접 삭제 실패: " + e.getMessage());
+                userServiceDeleted = false;
+            }
             
             // 2. Keycloak에서 삭제
             boolean keycloakDeleted = false;
@@ -242,5 +341,15 @@ public class UserController {
                     "message", "패스워드 변경 중 오류 발생"
                 ));
         }
+    }
+    
+    private String getUserIdFromUserService(String email) {
+        try {
+            // UserService에서 직접 이메일로 조회
+            return userService.getUserIdFromUserService(email);
+        } catch (Exception e) {
+            System.err.println("Failed to lookup userId from UserService: " + e.getMessage());
+        }
+        return "";
     }
 }

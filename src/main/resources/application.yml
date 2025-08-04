@@ -16,6 +16,13 @@ spring:
             - Path=/api/users/**
           filters:
             - JwtAuth
+
+        - id: auth-users-service
+          uri: http://localhost:8080
+          predicates:
+            - Path=/api/auth/users/**
+          filters:
+            - JwtAuth
             
         - id: product-service
           uri: ${PRODUCT_SERVICE_URL:http://product-service.product-service.svc.cluster.local}
@@ -62,12 +69,6 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: ${KEYCLOAK_ISSUER_URI:http://keycloak:8080/realms/sangsang-plus}
-
-# JWT Configuration (deprecated - using KeyCloak)
-jwt:
-  secret: ${JWT_SECRET:mySecretKey}
-  access-token-expiration: 3600000  # 1 hour in milliseconds
-  refresh-token-expiration: 2592000000  # 30 days in milliseconds
 
 # KeyCloak Configuration
 keycloak:
