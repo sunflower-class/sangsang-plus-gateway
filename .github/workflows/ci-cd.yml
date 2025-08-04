@@ -101,10 +101,10 @@ jobs:
         # Wait for deployment to be ready
         kubectl wait --for=condition=available --timeout=300s deployment/sangsang-plus-gateway
         
-        # Get service endpoint
-        SERVICE_URL=$(kubectl get service sangsang-plus-gateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+        # Use the actual domain instead of LoadBalancer IP
+        SERVICE_URL="oauth.buildingbite.com"
         
-        # Basic health check
-        curl -f http://${SERVICE_URL}/api/health || exit 1
+        # Basic health check with HTTPS
+        curl -f https://${SERVICE_URL}/api/health || exit 1
         echo "Deployment successful!"
 
