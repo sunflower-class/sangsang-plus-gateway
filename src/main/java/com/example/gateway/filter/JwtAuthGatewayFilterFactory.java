@@ -192,7 +192,7 @@ public class JwtAuthGatewayFilterFactory extends AbstractGatewayFilterFactory<Jw
                             }
                         });
                         System.out.println("=== End Downstream Request Details ===");
-                        
+
                         return chain.filter(exchange.mutate().request(modifiedRequest).build());
                         
                     } catch (Exception e) {

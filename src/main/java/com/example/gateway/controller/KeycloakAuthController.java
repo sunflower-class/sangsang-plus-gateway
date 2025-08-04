@@ -110,13 +110,13 @@ public class KeycloakAuthController {
                     .body(new AuthResponse(false, "KEYCLOAK_REGISTRATION_FAILED", null, null, null));
             }
             
-            // 3. 생성된 계정으로 자동 로그인
+            // 3. 생성된 계정으로 자동 로그인 (재시도 로직 포함)
             LoginRequest loginRequest = new LoginRequest();
             loginRequest.setEmail(request.getEmail());
             loginRequest.setPassword(request.getPassword());
             
-            // 로그인 성공 시 User Service 실패 여부를 알려줌
-            ResponseEntity<AuthResponse> loginResponse = login(loginRequest);
+            // Keycloak 속성 동기화를 위한 재시도 로그인
+            ResponseEntity<AuthResponse> loginResponse = loginWithUserIdRetry(loginRequest, userId, 3);
             if (loginResponse.getStatusCode().is2xxSuccessful() && !userServiceSuccess) {
                 AuthResponse authResponse = loginResponse.getBody();
                 authResponse.setMessage("회원가입 성공 (일부 서비스 동기화 대기 중)");
@@ -235,6 +235,7 @@ public class KeycloakAuthController {
             body.add("client_id", clientId);
             body.add("client_secret", clientSecret);
             body.add("refresh_token", refreshToken);
+            body.add("scope", "openid email profile userId");
 
             HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(body, headers);
             ResponseEntity<Map> response = restTemplate.postForEntity(tokenUrl, entity, Map.class);
@@ -531,6 +532,7 @@ public class KeycloakAuthController {
             body.add("client_secret", clientSecret);
             body.add("code", code);
             body.add("redirect_uri", "https://oauth.buildingbite.com/api/auth/" + provider + "/callback");
+            body.add("scope", "openid email profile userId");
             
             System.out.println("Token exchange request body: " + body);
             
@@ -855,6 +857,75 @@ public class KeycloakAuthController {
         } catch (Exception e) {
             // 통계 업데이트 실패해도 로그인은 성공으로 처리
             System.err.println("로그인 통계 업데이트 실패 (로그인은 성공): " + e.getMessage());
+        }
+    }
+    
+    /**
+     * userId가 JWT에 포함될 때까지 재시도하는 로그인 메소드
+     */
+    private ResponseEntity<AuthResponse> loginWithUserIdRetry(LoginRequest request, String expectedUserId, int maxRetries) {
+        int attempt = 0;
+        while (attempt < maxRetries) {
+            attempt++;
+            System.out.println("=== 재시도 로그인 시도 " + attempt + "/" + maxRetries + " ===");
+            
+            ResponseEntity<AuthResponse> response = login(request);
+            
+            // 로그인 실패 시 즉시 반환
+            if (!response.getStatusCode().is2xxSuccessful()) {
+                System.err.println("로그인 실패 - 재시도 중단");
+                return response;
+            }
+            
+            // JWT에 userId가 포함되었는지 확인
+            AuthResponse authResponse = response.getBody();
+            if (authResponse != null && authResponse.getToken() != null) {
+                String token = authResponse.getToken();
+                if (isUserIdInToken(token, expectedUserId)) {
+                    System.out.println("✅ JWT에 userId가 정상적으로 포함됨: " + expectedUserId);
+                    return response;
+                } else {
+                    System.out.println("⚠️ JWT에 userId가 누락됨 - 재시도 필요 (시도 " + attempt + "/" + maxRetries + ")");
+                }
+            }
+            
+            // 마지막 시도가 아니면 잠시 대기
+            if (attempt < maxRetries) {
+                try {
+                    Thread.sleep(1500); // 1.5초 대기
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+        
+        // 모든 재시도 실패 시 마지막 응답 반환
+        System.err.println("❌ 모든 재시도 실패 - userId가 JWT에 포함되지 않았지만 로그인은 성공");
+        return login(request);
+    }
+    
+    /**
+     * JWT 토큰에 예상된 userId가 포함되어 있는지 확인
+     */
+    private boolean isUserIdInToken(String token, String expectedUserId) {
+        try {
+            com.auth0.jwt.interfaces.DecodedJWT jwt = com.auth0.jwt.JWT.decode(token);
+            String tokenUserId = jwt.getClaim("userId") != null ? jwt.getClaim("userId").asString() : null;
+            
+            System.out.println("토큰에서 추출한 userId: " + tokenUserId);
+            System.out.println("예상 userId: " + expectedUserId);
+            
+            // expectedUserId가 null이면 토큰에 userId가 있기만 하면 됨
+            if (expectedUserId == null || expectedUserId.isEmpty()) {
+                return tokenUserId != null && !tokenUserId.isEmpty();
+            }
+            
+            // 정확한 userId 매칭
+            return expectedUserId.equals(tokenUserId);
+        } catch (Exception e) {
+            System.err.println("JWT 토큰 파싱 오류: " + e.getMessage());
+            return false;
         }
     }
 }
