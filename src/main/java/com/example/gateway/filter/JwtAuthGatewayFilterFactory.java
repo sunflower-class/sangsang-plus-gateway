@@ -197,36 +197,21 @@ public class JwtAuthGatewayFilterFactory extends AbstractGatewayFilterFactory<Jw
                         
                     } catch (Exception e) {
                         System.err.println("JWT Validation Error: " + e.getClass().getSimpleName() + " - " + e.getMessage());
-                        e.printStackTrace();
                         
-                        // Even if JWT validation fails, try to extract basic info and add minimal headers
-                        try {
-                            com.auth0.jwt.interfaces.DecodedJWT fallbackJwt = com.auth0.jwt.JWT.decode(token);
-                            String fallbackEmail = fallbackJwt.getClaim("email") != null ? fallbackJwt.getClaim("email").asString() : "";
-                            
-                            if (!fallbackEmail.isEmpty()) {
-                                System.out.println("JWT validation failed but extracted email: " + fallbackEmail);
-                                
-                                // Add minimal headers even with failed validation
-                                ServerHttpRequest.Builder requestBuilder = request.mutate()
-                                    .header("X-User-Email", fallbackEmail)
-                                    .header("X-User-Id", "") // Empty but present
-                                    .header("X-User-Role", "")
-                                    .header("X-User-Provider", "LOCAL");
-                                
-                                ServerHttpRequest modifiedRequest = requestBuilder.build();
-                                
-                                System.out.println("=== Minimal Headers Added (JWT validation failed) ===");
-                                System.out.println("X-User-Email: " + fallbackEmail);
-                                System.out.println("X-User-Id: (empty)");
-                                
-                                return chain.filter(exchange.mutate().request(modifiedRequest).build());
-                            }
-                        } catch (Exception decodeException) {
-                            System.err.println("Failed to decode JWT even for minimal headers: " + decodeException.getMessage());
+                        // Check if this is a token expiration error
+                        String errorMessage;
+                        if (e.getMessage() != null && e.getMessage().toLowerCase().contains("expired")) {
+                            errorMessage = "토큰이 만료되었습니다. 다시 로그인하거나 토큰을 갱신해주세요.";
+                            System.err.println("Token expired - returning 401 with refresh message");
+                        } else if (e.getClass().getSimpleName().contains("TokenExpired")) {
+                            errorMessage = "토큰이 만료되었습니다. 다시 로그인하거나 토큰을 갱신해주세요.";
+                            System.err.println("Token expired - returning 401 with refresh message");
+                        } else {
+                            errorMessage = "유효하지 않은 JWT 토큰입니다: " + e.getMessage();
+                            System.err.println("Invalid token - returning 401");
                         }
                         
-                        return onError(exchange, "Invalid JWT token: " + e.getMessage(), HttpStatus.UNAUTHORIZED);
+                        return onError(exchange, errorMessage, HttpStatus.UNAUTHORIZED);
                     }
                 });
         };
