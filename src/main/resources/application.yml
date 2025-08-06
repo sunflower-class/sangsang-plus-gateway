@@ -30,6 +30,35 @@ spring:
             - Path=/api/products/**
           filters:
             - JwtAuth
+        
+        - id: review-service
+          uri: ${REVIEW_SERVICE_URL:http://review-service.sangsangplus-backend.svc.cluster.local:5001}
+          predicates:
+            - Path=/api/review/**
+          filters:
+            - JwtAuth
+
+        - id: customer-service
+          uri: ${CUSTOMER_SERVICE_URL:http://customer-service.sangsangplus-backend.svc.cluster.local:5001}
+          predicates:
+            - Path=/api/customer/**
+          filters:
+            - JwtAuth
+        
+        - id: product-details-service
+          uri: ${PRODUCT_DETAILS_SERVICE_URL:http://product-details-service.sangsangplus-backend.svc.cluster.local:5001}
+          predicates:
+            - Path=/api/product-details/**
+          filters:
+            - JwtAuth
+
+        - id: abtest-service
+          uri: ${ABTEST_SERVICE_URL:http://abtest-service.sangsangplus-backend.svc.cluster.local:5001}
+          predicates:
+            - Path=/api/abtest/**
+          filters:
+            - JwtAuth
+
         - id: keycloak_admin
           uri: http://keycloak:8080
           predicates:
@@ -43,29 +72,8 @@ spring:
       #       redis-rate-limiter.replenishRate: 10
       #       redis-rate-limiter.burstCapacity: 20
 
-  
-  kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
-    consumer:
-      group-id: gateway-service
-      auto-offset-reset: earliest
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-    producer:
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.apache.kafka.common.serialization.StringSerializer
-
   security:
     oauth2:
-      client:
-        registration:
-          google:
-            client-id: ${GOOGLE_CLIENT_ID}
-            client-secret: ${GOOGLE_CLIENT_SECRET}
-            redirect-uri: "https://oauth.buildingbite.com/login/oauth2/code/{registrationId}"
-            scope:
-              - email
-              - profile
       resourceserver:
         jwt:
           issuer-uri: ${KEYCLOAK_ISSUER_URI:http://keycloak:8080/realms/sangsang-plus}

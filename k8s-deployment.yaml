@@ -6,6 +6,7 @@ metadata:
     app: sangsang-plus-gateway
 spec:
   replicas: 1
+  revisionHistoryLimit: 3
   selector:
     matchLabels:
       app: sangsang-plus-gateway
@@ -32,14 +33,7 @@ spec:
         # Frontend URL
         - name: FRONTEND_URL
           value: "https://oauth.buildingbite.com"
-        
-        # JWT Secret
-        - name: JWT_SECRET
-          valueFrom:
-            secretKeyRef:
-              name: gateway-secrets
-              key: jwt-secret
-        
+
         # KeyCloak 설정
         - name: KEYCLOAK_AUTH_SERVER_URL
           value: "http://keycloak:8080"
@@ -59,25 +53,6 @@ spec:
         # JWT 공개키 설정 - JWKS 엔드포인트 사용
         - name: KEYCLOAK_JWKS_URL
           value: "http://keycloak:8080/realms/sangsang-plus/protocol/openid-connect/certs"
-        
-        # Google OAuth 설정 (선택사항)
-        - name: GOOGLE_CLIENT_ID
-          valueFrom:
-            secretKeyRef:
-              name: gateway-secrets
-              key: google-client-id
-              optional: true
-        
-        - name: GOOGLE_CLIENT_SECRET
-          valueFrom:
-            secretKeyRef:
-              name: gateway-secrets
-              key: google-client-secret
-              optional: true
-        
-        # 추가 환경변수 (필요시)
-        # - name: SPRING_PROFILES_ACTIVE
-        #   value: "production"
         
         resources:
           requests:

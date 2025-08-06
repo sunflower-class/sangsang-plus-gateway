@@ -15,3 +15,13 @@ spec:
             name: sangsang-plus-gateway
             port:
               number: 8080
+  - host: buildingbite.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend-service
+            port:
+              number: 80
