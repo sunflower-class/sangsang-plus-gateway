@@ -32,28 +32,28 @@ spring:
             - JwtAuth
         
         - id: review-service
-          uri: ${REVIEW_SERVICE_URL:http://review-service.sangsangplus-backend.svc.cluster.local:5001}
+          uri: ${REVIEW_SERVICE_URL:http://review-service.sangsangplus-backend.svc.cluster.local}
           predicates:
             - Path=/api/review/**
           filters:
             - JwtAuth
 
         - id: customer-service
-          uri: ${CUSTOMER_SERVICE_URL:http://customer-service.sangsangplus-backend.svc.cluster.local:5001}
+          uri: ${CUSTOMER_SERVICE_URL:http://customer-service.sangsangplus-backend.svc.cluster.local}
           predicates:
             - Path=/api/customer/**
           filters:
             - JwtAuth
         
         - id: product-details-service
-          uri: ${PRODUCT_DETAILS_SERVICE_URL:http://product-details-service.sangsangplus-backend.svc.cluster.local:5001}
+          uri: ${PRODUCT_DETAILS_SERVICE_URL:http://product-details-service.sangsangplus-backend.svc.cluster.local}
           predicates:
             - Path=/api/product-details/**
           filters:
             - JwtAuth
 
         - id: abtest-service
-          uri: ${ABTEST_SERVICE_URL:http://abtest-service.sangsangplus-backend.svc.cluster.local:5001}
+          uri: ${ABTEST_SERVICE_URL:http://abtest-service.sangsangplus-backend.svc.cluster.local}
           predicates:
             - Path=/api/abtest/**
           filters:
