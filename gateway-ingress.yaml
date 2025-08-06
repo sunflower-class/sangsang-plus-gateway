@@ -1,7 +1,9 @@
+# Gateway Ingress - default namespace
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: gateway-ingress
+  namespace: default
 spec:
   ingressClassName: nginx
   rules:
@@ -14,7 +16,17 @@ spec:
           service:
             name: sangsang-plus-gateway
             port:
-              number: 8080
+              number: 80  # Changed from 8080 to 80 to match Service port
+---
+# Frontend Ingress - sangsangplus-frontend namespace
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: frontend-ingress
+  namespace: sangsangplus-frontend
+spec:
+  ingressClassName: nginx
+  rules:
   - host: buildingbite.com
     http:
       paths:

@@ -410,15 +410,76 @@ docker run -p 8080:8080 \
   buildingbite/sangsangplus-gateway:latest
 ```
 
+## 🏗️ 인프라 구성
+
+### Ingress 구성 파일
+
+이 프로젝트는 두 개의 주요 인프라 파일을 사용합니다:
+
+#### 1. **`ingress-setup.yaml`** - Nginx Ingress Controller 설치 (한 번만 실행)
+- **용도**: Kubernetes 클러스터에 Nginx Ingress Controller 설치
+- **포함 내용**:
+  - Nginx Ingress Controller Deployment
+  - LoadBalancer Service (고정 IP: 20.249.144.238)
+  - RBAC 권한 설정
+  - IngressClass 정의
+- **실행 시점**: 클러스터 초기 설정 시 한 번만
+- **실행 명령**:
+  ```bash
+  kubectl apply -f ingress-setup.yaml
+  ```
+
+#### 2. **`gateway-ingress.yaml`** - 애플리케이션 라우팅 규칙 (자주 변경)
+- **용도**: 도메인과 서비스 간 라우팅 규칙 정의
+- **포함 내용**:
+  - `oauth.buildingbite.com` → Gateway Service 라우팅
+  - `buildingbite.com` → Frontend Service 라우팅
+- **실행 시점**: 라우팅 규칙 변경 시마다
+- **실행 명령**:
+  ```bash
+  kubectl apply -f gateway-ingress.yaml
+  ```
+
+### 인프라 구성 순서
+
+```bash
+# 1. Nginx Ingress Controller 설치 (최초 1회)
+kubectl apply -f ingress-setup.yaml
+
+# 2. Ingress Controller 상태 확인
+kubectl get pods -n ingress-nginx
+kubectl get svc -n ingress-nginx
+
+# 3. 애플리케이션 라우팅 규칙 적용
+kubectl apply -f gateway-ingress.yaml
+
+# 4. Ingress 상태 확인
+kubectl get ingress -A
+```
+
+### 네트워크 아키텍처
+
+```
+Internet
+    ↓
+[LoadBalancer: 20.249.144.238]
+    ↓
+[Nginx Ingress Controller]
+    ↓
+    ├── oauth.buildingbite.com → Gateway Service (ClusterIP)
+    └── buildingbite.com → Frontend Service (ClusterIP)
+```
+
 ## Kubernetes 배포
 
 ### 사전 요구사항
 
 다음 서비스들이 먼저 배포되어 있어야 합니다:
 
-1. **Keycloak** (네임스페이스: `default` 또는 `keycloak`)
-2. **User Service** (네임스페이스: `user-service`)
-3. **Product Service** (네임스페이스: `product-service`)  
+1. **Nginx Ingress Controller** (네임스페이스: `ingress-nginx`)
+2. **Keycloak** (네임스페이스: `default` 또는 `keycloak`)
+3. **User Service** (네임스페이스: `user-service`)
+4. **Product Service** (네임스페이스: `product-service`)  
 
 ### 1. Keycloak 배포 및 설정
 

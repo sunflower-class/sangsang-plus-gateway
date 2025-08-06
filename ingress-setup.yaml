@@ -387,23 +387,3 @@ spec:
     app.kubernetes.io/name: ingress-nginx
     app.kubernetes.io/instance: ingress-nginx
     app.kubernetes.io/component: controller
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: gateway-ingress
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /$1
-spec:
-  ingressClassName: nginx
-  rules:
-  - host: oauth.buildingbite.com
-    http:
-      paths:
-      - path: /(.*)
-        pathType: Prefix
-        backend:
-          service:
-            name: sangsang-plus-gateway
-            port:
-              number: 8080
