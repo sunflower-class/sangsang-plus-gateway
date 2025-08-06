@@ -9,7 +9,14 @@ Spring Cloud Gateway 기반의 API Gateway 서비스로 Keycloak OAuth2/OIDC 인
 - **사용자 관리**: 회원가입, 로그인, 중복 사용자 감지
 - **토큰 관리**: Access Token, Refresh Token 발급 및 갱신
 - **JWT 게이트웨이 검증**: JWT 토큰을 게이트웨이 레벨에서 검증하고 헤더로 사용자 정보 전달
-- **마이크로서비스 라우팅**: 사용자 서비스, 제품 서비스로 요청 라우팅
+- **마이크로서비스 라우팅**: 6개 백엔드 서비스로 요청 라우팅
+  - User Service (사용자 관리)
+  - Product Service (제품 관리)
+  - Review Service (리뷰 관리)
+  - Customer Service (고객 관리)
+  - Product Details Service (제품 상세)
+  - ABTest Service (A/B 테스트)
+- **CORS 설정**: 프론트엔드 도메인(`buildingbite.com`) 허용
 - **Health Check**: Kubernetes 환경 지원
 
 ## 📋 전제 조건
@@ -45,10 +52,19 @@ Spring Cloud Gateway 기반의 API Gateway 서비스로 Keycloak OAuth2/OIDC 인
 
 ### 게이트웨이 라우팅
 
-| Method | Path Pattern | Target Service | Description |
-|--------|-------------|----------------|-------------|
-| ALL | `/api/users/**` | User Service | 기타 사용자 관리 API (게이트웨이 직접 처리 제외) |
-| ALL | `/api/products/**` | Product Service | 제품 관리 API |
+| Method | Path Pattern | Target Service | Network Address | Description |
+|--------|-------------|----------------|----------------|-------------|
+| ALL | `/api/users/**` | User Service | `user-service.user-service.svc.cluster.local` | 사용자 관리 API (게이트웨이 직접 처리 제외) |
+| ALL | `/api/products/**` | Product Service | `product-service.product-service.svc.cluster.local:8082` | 제품 관리 API |
+| ALL | `/api/review/**` | Review Service | `review-service.sangsangplus-backend.svc.cluster.local` | 리뷰 관리 API |
+| ALL | `/api/customer/**` | Customer Service | `customer-service.sangsangplus-backend.svc.cluster.local` | 고객 관리 API |
+| ALL | `/api/product-details/**` | Product Details Service | `product-details-service.sangsangplus-backend.svc.cluster.local` | 제품 상세 정보 API |
+| ALL | `/api/abtest/**` | ABTest Service | `abtest-service.sangsangplus-backend.svc.cluster.local` | A/B 테스트 API |
+
+### 라우팅 규칙
+- **JWT 필터 적용**: 모든 서비스 라우팅에 `JwtAuth` 필터 적용
+- **토큰 없는 요청**: JWT 토큰이 없으면 인증 헤더 없이 다운스트림으로 전달
+- **토큰 있는 요청**: JWT 검증 후 사용자 정보를 헤더로 다운스트림에 전달
 
 ### 소셜 로그인 (단순화된 엔드포인트)
 
@@ -336,10 +352,14 @@ export default {
 
 ### 필수 환경 변수
 
-| 변수명 | 설명 | 기본값 | 비고 |
-|--------|------|--------|------|
-| `USER_SERVICE_URL` | User 서비스 URL | `http://user-service` | K8s: `http://user-service.user-service.svc.cluster.local` |
-| `PRODUCT_SERVICE_URL` | Product 서비스 URL | `http://product-service` | K8s: `http://product-service.product-service.svc.cluster.local` |
+| 변수명 | 설명 | 기본값 | Kubernetes 설정값 |
+|--------|------|--------|------------------|
+| `USER_SERVICE_URL` | User 서비스 URL | `http://user-service` | `http://user-service.user-service.svc.cluster.local` |
+| `PRODUCT_SERVICE_URL` | Product 서비스 URL | `http://product-service` | `http://product-service.product-service.svc.cluster.local:8082` |
+| `REVIEW_SERVICE_URL` | Review 서비스 URL | `http://review-service` | `http://review-service.sangsangplus-backend.svc.cluster.local` |
+| `CUSTOMER_SERVICE_URL` | Customer 서비스 URL | `http://customer-service` | `http://customer-service.sangsangplus-backend.svc.cluster.local` |
+| `PRODUCT_DETAILS_SERVICE_URL` | Product Details 서비스 URL | `http://product-details-service` | `http://product-details-service.sangsangplus-backend.svc.cluster.local` |
+| `ABTEST_SERVICE_URL` | ABTest 서비스 URL | `http://abtest-service` | `http://abtest-service.sangsangplus-backend.svc.cluster.local` |
 | `FRONTEND_URL` | 프론트엔드 URL | `https://buildingbite.com` | OAuth2 리다이렉트용 |
 
 ### Keycloak 설정 (필수)
