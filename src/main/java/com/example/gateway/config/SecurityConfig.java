@@ -39,10 +39,7 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(Arrays.asList(
             "https://buildingbite.com",
-            "https://www.buildingbite.com",
-            "https://oauth.buildingbite.com",
-            "http://localhost:3000",
-            "http://localhost:8080"
+            "https://oauth.buildingbite.com"
         ));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         configuration.setAllowedHeaders(Arrays.asList("*"));
