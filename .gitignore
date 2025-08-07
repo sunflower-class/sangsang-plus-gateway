@@ -14,3 +14,8 @@ src/main/resources/client-secret.json
 # Kubernetes manifests with real secrets  
 *-secrets.yaml
 k8s-deployment-with-secrets.yaml
+
+# Istio related files (managed separately)
+istio-*.yaml
+istio-*/
+istio-configs/

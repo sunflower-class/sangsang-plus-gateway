@@ -29,6 +29,10 @@ public class SecurityConfig {
                 .pathMatchers("/api/test/**").permitAll()
                 .pathMatchers("/api/users/**").permitAll()
                 .pathMatchers("/api/products/**").permitAll()
+                .pathMatchers("/api/review/**").permitAll()
+                .pathMatchers("/api/customer/**").permitAll()
+                .pathMatchers("/api/product-details/**").permitAll()
+                .pathMatchers("/api/abtest/**").permitAll()
                 .anyExchange().permitAll()
             )
             .build();
