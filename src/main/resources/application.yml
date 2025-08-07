@@ -11,7 +11,7 @@ spring:
     gateway:
       routes:
         - id: user-service
-          uri: ${USER_SERVICE_URL:http://user-service.user-service.svc.cluster.local}
+          uri: ${USER_SERVICE_URL:http://user-service.sangsangplus-backend.svc.cluster.local}
           predicates:
             - Path=/api/users/**
           filters:

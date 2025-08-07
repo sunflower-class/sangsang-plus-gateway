@@ -41,7 +41,7 @@ public class KeycloakAuthController {
     private String realm = "sangsang-plus";
     private String clientId = "gateway-client";
     private String clientSecret = "XQtlIuzXO3so9C536kY6HVFNgFSJVHHK";
-    private String userServiceUrl = "http://user-service.user-service.svc.cluster.local";
+    private String userServiceUrl = "http://user-service.sangsangplus-backend.svc.cluster.local";
 
     private final RestTemplate restTemplate = new RestTemplate();
 

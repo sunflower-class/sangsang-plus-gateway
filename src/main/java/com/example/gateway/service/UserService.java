@@ -20,7 +20,7 @@ public class UserService {
     
     private final RestTemplate restTemplate = new RestTemplate();
     
-    @Value("${user-service.url:http://user-service.user-service.svc.cluster.local}")
+    @Value("${user-service.url:http://user-service.sangsangplus-backend.svc.cluster.local}")
     private String userServiceUrl;
     
     private final String internalKeycloakUrl = "http://keycloak:8080";
