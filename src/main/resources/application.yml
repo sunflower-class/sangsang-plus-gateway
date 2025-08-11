@@ -48,7 +48,7 @@ spring:
         - id: product-details-service
           uri: ${PRODUCT_DETAILS_SERVICE_URL:http://product-details-service.sangsangplus-backend.svc.cluster.local}
           predicates:
-            - Path=/api/product-details/**
+            - Path=/api/generation/**
           filters:
             - JwtAuth
 
