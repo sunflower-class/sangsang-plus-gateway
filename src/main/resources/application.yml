@@ -9,6 +9,24 @@ spring:
   
   cloud:
     gateway:
+      globalcors:
+        corsConfigurations:
+          '[/**]':
+            allowedOrigins:
+              - "https://buildingbite.com"
+              - "https://oauth.buildingbite.com"
+              - "http://localhost:3000"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+              - PATCH
+            allowedHeaders:
+              - "*"
+            allowCredentials: true
+            maxAge: 3600
       routes:
         - id: user-service
           uri: ${USER_SERVICE_URL:http://user-service.sangsangplus-backend.svc.cluster.local}
