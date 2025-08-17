@@ -83,6 +83,9 @@ spring:
             - Path=/api/notifications/**
           filters:
             - JwtAuth
+          - name: RequestTimeout
+            args:
+              timeout: 600s  # SSE는 긴 연결이므로 타임아웃 증가
 
         - id: keycloak_admin
           uri: http://keycloak:8080
