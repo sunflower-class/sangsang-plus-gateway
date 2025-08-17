@@ -2,9 +2,9 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ keycloak-integration ]
+    branches: [ main ]
   pull_request:
-    branches: [ keycloak-integration ]
+    branches: [ main ]
 
 env:
   DOCKER_IMAGE: buildingbite/sangsangplus-gateway
@@ -36,8 +36,6 @@ jobs:
   build-and-push:
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/keycloak-integration'
-    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -55,7 +53,7 @@ jobs:
       with:
         images: ${{ env.DOCKER_IMAGE }}
         tags: |
-          type=raw,value=dev,enable=${{ github.ref == 'refs/heads/keycloak-integration' }}
+          type=raw,value=dev  # 항상 dev 태그로 푸시
 
     - name: Build and push Docker image
       uses: docker/build-push-action@v5
@@ -71,8 +69,6 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/keycloak-integration'
-    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -92,19 +88,12 @@ jobs:
         # Update image tag to dev
         sed -i "s|image: buildingbite/sangsangplus-gateway:.*|image: buildingbite/sangsangplus-gateway:dev|g" k8s-deployment.yaml
         
-        # Apply to default namespace
         kubectl apply -f k8s-deployment.yaml
         kubectl rollout status deployment/sangsang-plus-gateway --timeout=600s
 
     - name: Run health check
       run: |
-        # Wait for deployment to be ready
         kubectl wait --for=condition=available --timeout=300s deployment/sangsang-plus-gateway
-        
-        # Use the actual domain instead of LoadBalancer IP
         SERVICE_URL="oauth.buildingbite.com"
-        
-        # Basic health check with HTTPS
         curl -f https://${SERVICE_URL}/api/health || exit 1
         echo "Deployment successful!"
-
