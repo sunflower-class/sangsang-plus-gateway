@@ -77,6 +77,13 @@ spring:
           filters:
             - JwtAuth
 
+        - id: notification-service
+          uri: ${NOTIFICATION_SERVICE_URL:http://notification-service.sangsangplus-backend.svc.cluster.local}
+          predicates:
+            - Path=/api/notifications/**
+          filters:
+            - JwtAuth
+
         - id: keycloak_admin
           uri: http://keycloak:8080
           predicates:
