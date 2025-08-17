@@ -45,6 +45,10 @@ spec:
         # ABTest 서비스 URL
         - name: ABTEST_SERVICE_URL
           value: "http://abtest-service.sangsangplus-backend.svc.cluster.local"
+
+        # Notification 서비스 URL
+        - name: NOTIFICATION_SERVICE_URL
+          value: "http://notification-service.sangsangplus-backend.svc.cluster.local"
         
         # Frontend URL
         - name: FRONTEND_URL
