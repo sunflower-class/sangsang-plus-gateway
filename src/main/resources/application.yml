@@ -130,25 +130,8 @@ spring:
               args:
                 name: Cache-Control
                 value: "no-cache, no-transform"  # 캐싱 비활성화
-            - name: AddResponseHeader
-              args:
-                name: Access-Control-Allow-Origin
-                value: "https://buildingbite.com"
-            - name: AddResponseHeader
-              args:
-                name: Access-Control-Allow-Credentials
-                value: "true"
-            - name: AddResponseHeader
-              args:
-                name: Access-Control-Allow-Methods
-                value: "GET, POST, PUT, DELETE, OPTIONS"
-            - name: AddResponseHeader
-              args:
-                name: Access-Control-Allow-Headers
-                value: "Authorization, Content-Type, X-Requested-With"
           metadata:
-            response-timeout: 3600000  # 3600초 (1시간) 타임아웃 - SSE용 긴 연결
-            connect-timeout: 10000     # 10초 연결 타임아웃
+            response-timeout: 600000  # 600초 타임아웃 (밀리초 단위)
 
         - id: keycloak_admin
           uri: http://keycloak:8080

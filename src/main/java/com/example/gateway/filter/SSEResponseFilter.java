@@ -23,9 +23,9 @@ public class SSEResponseFilter implements GlobalFilter, Ordered {
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         String path = exchange.getRequest().getPath().value();
         
-        // SSE를 사용하는 엔드포인트 체크
-        if (path.startsWith("/api/management/") || 
-            path.startsWith("/api/notifications/")) {
+        // SSE를 사용하는 엔드포인트 체크 (스트리밍 경로만)
+        if (path.contains("/stream/") || 
+            (path.startsWith("/api/management/") && path.contains("/chat/"))) {
             
             ServerHttpResponse originalResponse = exchange.getResponse();
             ServerHttpResponseDecorator decoratedResponse = new ServerHttpResponseDecorator(originalResponse) {
