@@ -36,10 +36,10 @@ public class KeycloakMapperService {
             createUserAttributeMapper(adminToken, dedicatedScopeId, "createdAt", "createdAt");
             createUserAttributeMapper(adminToken, dedicatedScopeId, "userId", "userId");
             
-            System.out.println("✅ Keycloak 커스텀 매퍼 설정 완료!");
+            // System.out.println("✅ Keycloak 커스텀 매퍼 설정 완료!");
             
         } catch (Exception e) {
-            System.err.println("❌ Keycloak 매퍼 설정 실패: " + e.getMessage());
+            // System.err.println("❌ Keycloak 매퍼 설정 실패: " + e.getMessage());
         }
     }
     
@@ -63,9 +63,9 @@ public class KeycloakMapperService {
     private String getClientUuid(String adminToken) {
         String clientsUrl = keycloakUrl + "/admin/realms/" + realm + "/clients?clientId=" + clientId;
         
-        System.out.println("=== Client UUID 조회 ===");
-        System.out.println("URL: " + clientsUrl);
-        System.out.println("ClientId: " + clientId);
+        // System.out.println("=== Client UUID 조회 ===");
+        // System.out.println("URL: " + clientsUrl);
+        // System.out.println("ClientId: " + clientId);
         
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(adminToken);
@@ -74,27 +74,27 @@ public class KeycloakMapperService {
         ResponseEntity<List> response = restTemplate.exchange(clientsUrl, HttpMethod.GET, entity, List.class);
         
         List<Map<String, Object>> clients = response.getBody();
-        System.out.println("Keycloak 응답 - 클라이언트 수: " + (clients != null ? clients.size() : "null"));
+        // System.out.println("Keycloak 응답 - 클라이언트 수: " + (clients != null ? clients.size() : "null"));
         
         if (clients == null || clients.isEmpty()) {
             // 모든 클라이언트 목록 조회해서 디버깅
             String allClientsUrl = keycloakUrl + "/admin/realms/" + realm + "/clients";
-            System.out.println("모든 클라이언트 조회: " + allClientsUrl);
+            // System.out.println("모든 클라이언트 조회: " + allClientsUrl);
             
             try {
                 ResponseEntity<List> allResponse = restTemplate.exchange(allClientsUrl, HttpMethod.GET, entity, List.class);
                 List<Map<String, Object>> allClients = allResponse.getBody();
-                System.out.println("전체 클라이언트 수: " + (allClients != null ? allClients.size() : "null"));
+                // System.out.println("전체 클라이언트 수: " + (allClients != null ? allClients.size() : "null"));
                 
                 if (allClients != null) {
-                    System.out.println("=== 사용 가능한 클라이언트 목록 ===");
+                    // System.out.println("=== 사용 가능한 클라이언트 목록 ===");
                     for (Map<String, Object> client : allClients) {
-                        System.out.println("  - clientId: " + client.get("clientId") + ", id: " + client.get("id"));
+                        // System.out.println("  - clientId: " + client.get("clientId") + ", id: " + client.get("id"));
                     }
-                    System.out.println("=== End 클라이언트 목록 ===");
+                    // System.out.println("=== End 클라이언트 목록 ===");
                 }
             } catch (Exception e) {
-                System.err.println("전체 클라이언트 조회 실패: " + e.getMessage());
+                // System.err.println("전체 클라이언트 조회 실패: " + e.getMessage());
             }
             
             throw new RuntimeException("Client not found: " + clientId);
@@ -102,7 +102,7 @@ public class KeycloakMapperService {
         
         Map<String, Object> client = clients.get(0);
         String uuid = (String) client.get("id");
-        System.out.println("찾은 클라이언트 UUID: " + uuid);
+        // System.out.println("찾은 클라이언트 UUID: " + uuid);
         return uuid;
     }
     
@@ -149,19 +149,19 @@ public class KeycloakMapperService {
         
         mapper.put("config", config);
         
-        System.out.println("=== 매퍼 생성 요청 ===");
-        System.out.println("URL: " + mappersUrl);
-        System.out.println("Scope ID: " + scopeId);
-        System.out.println("Attribute: " + attributeName + " -> Claim: " + claimName);
-        System.out.println("Mapper config: " + mapper);
+        // System.out.println("=== 매퍼 생성 요청 ===");
+        // System.out.println("URL: " + mappersUrl);
+        // System.out.println("Scope ID: " + scopeId);
+        // System.out.println("Attribute: " + attributeName + " -> Claim: " + claimName);
+        // System.out.println("Mapper config: " + mapper);
         
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(mapper, headers);
         
         try {
             ResponseEntity<Void> response = restTemplate.postForEntity(mappersUrl, entity, Void.class);
-            System.out.println("✅ " + attributeName + " 매퍼 생성 완료 - HTTP " + response.getStatusCode());
+            // System.out.println("✅ " + attributeName + " 매퍼 생성 완료 - HTTP " + response.getStatusCode());
         } catch (Exception e) {
-            System.out.println("⚠️ " + attributeName + " 매퍼 생성 실패: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+            // System.out.println("⚠️ " + attributeName + " 매퍼 생성 실패: " + e.getClass().getSimpleName() + " - " + e.getMessage());
             e.printStackTrace();
         }
     }

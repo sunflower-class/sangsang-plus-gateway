@@ -16,7 +16,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> handleValidationException(MethodArgumentNotValidException ex) {
-        System.out.println("=== Validation Exception ===");
+        // System.out.println("=== Validation Exception ===");
         
         Map<String, Object> response = new HashMap<>();
         Map<String, String> errors = new HashMap<>();
@@ -25,7 +25,7 @@ public class GlobalExceptionHandler {
             String fieldName = ((FieldError) error).getField();
             String errorMessage = error.getDefaultMessage();
             errors.put(fieldName, errorMessage);
-            System.out.println("Validation error - Field: " + fieldName + ", Message: " + errorMessage);
+            // System.out.println("Validation error - Field: " + fieldName + ", Message: " + errorMessage);
         });
         
         response.put("success", false);
@@ -37,9 +37,9 @@ public class GlobalExceptionHandler {
     
     @ExceptionHandler(ServerWebInputException.class)
     public ResponseEntity<Map<String, Object>> handleServerWebInputException(ServerWebInputException ex) {
-        System.out.println("=== ServerWebInputException ===");
-        System.out.println("Reason: " + ex.getReason());
-        System.out.println("Message: " + ex.getMessage());
+        // System.out.println("=== ServerWebInputException ===");
+        // System.out.println("Reason: " + ex.getReason());
+        // System.out.println("Message: " + ex.getMessage());
         ex.printStackTrace();
         
         Map<String, Object> response = new HashMap<>();
@@ -51,9 +51,9 @@ public class GlobalExceptionHandler {
     
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGenericException(Exception ex) {
-        System.out.println("=== Generic Exception ===");
-        System.out.println("Exception type: " + ex.getClass().getSimpleName());
-        System.out.println("Message: " + ex.getMessage());
+        // System.out.println("=== Generic Exception ===");
+        // System.out.println("Exception type: " + ex.getClass().getSimpleName());
+        // System.out.println("Message: " + ex.getMessage());
         ex.printStackTrace();
         
         Map<String, Object> response = new HashMap<>();

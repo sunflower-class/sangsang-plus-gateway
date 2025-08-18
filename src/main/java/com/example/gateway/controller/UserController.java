@@ -1,6 +1,8 @@
 package com.example.gateway.controller;
 
 import com.example.gateway.service.UserService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -14,6 +16,8 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/auth/users")
 public class UserController {
+    
+    private static final Logger log = LoggerFactory.getLogger(UserController.class);
     
     @Autowired
     private UserService userService;
@@ -51,30 +55,30 @@ public class UserController {
                 try {
                     if (jwt.getClaim("userId") != null && !jwt.getClaim("userId").isNull()) {
                         userId = jwt.getClaim("userId").asString();
-                        System.out.println("JWT에서 userId 추출 성공: " + userId);
+                        log.debug("JWT userId: {}", userId);
                     } else if (jwt.getClaim("user_id") != null && !jwt.getClaim("user_id").isNull()) {
                         userId = jwt.getClaim("user_id").asString();
-                        System.out.println("JWT에서 user_id 추출 성공: " + userId);
+                        log.debug("JWT user_id: {}", userId);
                     } else if (jwt.getClaim("preferred_username") != null && !jwt.getClaim("preferred_username").isNull()) {
                         String preferredUsername = jwt.getClaim("preferred_username").asString();
                         if (preferredUsername.matches("\\d+") || preferredUsername.matches("[0-9a-fA-F-]{36}")) {
                             userId = preferredUsername;
-                            System.out.println("JWT에서 preferred_username을 userId로 사용: " + userId);
+                            log.debug("JWT preferred_username as userId: {}", userId);
                         }
                     }
                 } catch (Exception e) {
-                    System.err.println("JWT에서 userId 추출 실패 (계속 진행): " + e.getMessage());
+                    // System.err.println("JWT에서 userId 추출 실패 (계속 진행): " + e.getMessage());
                 }
                 
                 // JWT에서 userId를 찾지 못했으면 UserService에서 조회
                 if (userId == null || userId.isEmpty()) {
-                    System.out.println("JWT에서 userId를 찾지 못함. UserService에서 조회 시도...");
+                    log.debug("UserId not in JWT, fetching from UserService");
                     userId = getUserIdFromUserService(email);
-                    System.out.println("UserService에서 조회한 userId: " + userId);
+                    log.debug("UserService userId: {}", userId);
                 }
                 
             } catch (Exception jwtError) {
-                System.err.println("JWT parsing error: " + jwtError.getMessage());
+                // System.err.println("JWT parsing error: " + jwtError.getMessage());
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of(
                         "success", false,
@@ -98,18 +102,15 @@ public class UserController {
                     ));
             }
             
-            System.out.println("=== 사용자 정보 수정 요청 ===");
-            System.out.println("Email: " + email);
-            System.out.println("User ID: " + userId);
-            System.out.println("Update data: " + updateData);
+            log.info("Update user: {} ({})", email, userId);
             
             // User Service에서 직접 정보 수정 (헤더 포함)
             boolean updated = false;
             try {
                 updated = userService.updateUserInUserService(userId, updateData, email, userId);
-                System.out.println("User Service 직접 수정 결과 (헤더 포함): " + updated);
+                log.debug("UserService update result: {}", updated);
             } catch (Exception e) {
-                System.err.println("User Service 직접 수정 실패: " + e.getMessage());
+                // System.err.println("User Service 직접 수정 실패: " + e.getMessage());
                 updated = false;
             }
             
@@ -127,7 +128,7 @@ public class UserController {
             }
             
         } catch (Exception e) {
-            System.err.println("사용자 정보 수정 중 오류: " + e.getMessage());
+            // System.err.println("사용자 정보 수정 중 오류: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of(
                     "success", false,
@@ -167,30 +168,30 @@ public class UserController {
                 try {
                     if (jwt.getClaim("userId") != null && !jwt.getClaim("userId").isNull()) {
                         userId = jwt.getClaim("userId").asString();
-                        System.out.println("JWT에서 userId 추출 성공: " + userId);
+                        log.debug("JWT userId: {}", userId);
                     } else if (jwt.getClaim("user_id") != null && !jwt.getClaim("user_id").isNull()) {
                         userId = jwt.getClaim("user_id").asString();
-                        System.out.println("JWT에서 user_id 추출 성공: " + userId);
+                        log.debug("JWT user_id: {}", userId);
                     } else if (jwt.getClaim("preferred_username") != null && !jwt.getClaim("preferred_username").isNull()) {
                         String preferredUsername = jwt.getClaim("preferred_username").asString();
                         if (preferredUsername.matches("\\d+") || preferredUsername.matches("[0-9a-fA-F-]{36}")) {
                             userId = preferredUsername;
-                            System.out.println("JWT에서 preferred_username을 userId로 사용: " + userId);
+                            log.debug("JWT preferred_username as userId: {}", userId);
                         }
                     }
                 } catch (Exception e) {
-                    System.err.println("JWT에서 userId 추출 실패 (계속 진행): " + e.getMessage());
+                    // System.err.println("JWT에서 userId 추출 실패 (계속 진행): " + e.getMessage());
                 }
                 
                 // JWT에서 userId를 찾지 못했으면 UserService에서 조회
                 if (userId == null || userId.isEmpty()) {
-                    System.out.println("JWT에서 userId를 찾지 못함. UserService에서 조회 시도...");
+                    log.debug("UserId not in JWT, fetching from UserService");
                     userId = getUserIdFromUserService(email);
-                    System.out.println("UserService에서 조회한 userId: " + userId);
+                    log.debug("UserService userId: {}", userId);
                 }
                 
             } catch (Exception jwtError) {
-                System.err.println("JWT parsing error: " + jwtError.getMessage());
+                // System.err.println("JWT parsing error: " + jwtError.getMessage());
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of(
                         "success", false,
@@ -198,12 +199,7 @@ public class UserController {
                     ));
             }
             
-            System.out.println("=== 계정 삭제 요청 (JWT 직접 파싱) ===");
-            System.out.println("X-User-Email header: " + emailHeader);
-            System.out.println("X-User-Id header: " + userIdHeader);
-            System.out.println("Email from JWT: " + email);
-            System.out.println("UserId from JWT: " + userId);
-            System.out.println("Keycloak User ID (from JWT): " + keycloakUserId);
+            log.info("Delete account: {} ({})", email, userId);
             
             if (email == null || email.isEmpty()) {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
@@ -217,9 +213,9 @@ public class UserController {
             boolean userServiceDeleted = false;
             try {
                 userServiceDeleted = userService.deleteUserInUserService(userId, email, userId);
-                System.out.println("User Service 직접 삭제 결과 (헤더 포함): " + userServiceDeleted);
+                log.debug("UserService delete result: {}", userServiceDeleted);
             } catch (Exception e) {
-                System.err.println("User Service 직접 삭제 실패: " + e.getMessage());
+                // System.err.println("User Service 직접 삭제 실패: " + e.getMessage());
                 userServiceDeleted = false;
             }
             
@@ -227,9 +223,9 @@ public class UserController {
             boolean keycloakDeleted = false;
             if (keycloakUserId != null) {
                 keycloakDeleted = userService.deleteKeycloakUser(keycloakUserId);
-                System.out.println("Keycloak 삭제 결과: " + keycloakDeleted);
+                log.debug("Keycloak delete result: {}", keycloakDeleted);
             } else {
-                System.err.println("Keycloak User ID를 찾을 수 없습니다");
+                // System.err.println("Keycloak User ID를 찾을 수 없습니다");
             }
             
             if (userServiceDeleted && keycloakDeleted) {
@@ -252,7 +248,7 @@ public class UserController {
                 ));
             }
         } catch (Exception e) {
-            System.err.println("계정 삭제 중 오류: " + e.getMessage());
+            // System.err.println("계정 삭제 중 오류: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of(
                     "success", false,
@@ -286,7 +282,7 @@ public class UserController {
                         ));
                 }
             } catch (Exception jwtError) {
-                System.err.println("JWT parsing error: " + jwtError.getMessage());
+                // System.err.println("JWT parsing error: " + jwtError.getMessage());
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of(
                         "success", false,
@@ -312,13 +308,11 @@ public class UserController {
                     ));
             }
             
-            System.out.println("=== 패스워드 변경 요청 ===");
-            System.out.println("Email: " + email);
-            System.out.println("Keycloak User ID: " + keycloakUserId);
+            log.info("Change password: {}", email);
             
             // Keycloak에서 패스워드 변경
             boolean passwordUpdated = userService.updateKeycloakPassword(keycloakUserId, newPassword);
-            System.out.println("Keycloak 패스워드 변경 결과: " + passwordUpdated);
+            log.debug("Keycloak password change result: {}", passwordUpdated);
             
             if (passwordUpdated) {
                 return ResponseEntity.ok(Map.of(
@@ -334,7 +328,7 @@ public class UserController {
             }
             
         } catch (Exception e) {
-            System.err.println("패스워드 변경 중 오류: " + e.getMessage());
+            // System.err.println("패스워드 변경 중 오류: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of(
                     "success", false,
@@ -348,7 +342,7 @@ public class UserController {
             // UserService에서 직접 이메일로 조회
             return userService.getUserIdFromUserService(email);
         } catch (Exception e) {
-            System.err.println("Failed to lookup userId from UserService: " + e.getMessage());
+            // System.err.println("Failed to lookup userId from UserService: " + e.getMessage());
         }
         return "";
     }

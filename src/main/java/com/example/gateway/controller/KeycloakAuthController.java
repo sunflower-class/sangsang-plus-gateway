@@ -47,17 +47,17 @@ public class KeycloakAuthController {
 
     @PostMapping("/auth/register")
     public ResponseEntity<AuthResponse> register(@Valid @RequestBody CreateUserRequest request) {
-        System.out.println("=== 회원가입 요청 시작 ===");
-        System.out.println("Email: " + request.getEmail());
-        System.out.println("Name: " + request.getName());
-        System.out.println("Password length: " + (request.getPassword() != null ? request.getPassword().length() : "null"));
+        // System.out.println("=== 회원가입 요청 시작 ===");
+        // System.out.println("Email: " + request.getEmail());
+        // System.out.println("Name: " + request.getName());
+        // System.out.println("Password length: " + (request.getPassword() != null ? request.getPassword().length() : "null"));
         try {
             // 1. 먼저 유저 서비스에 사용자 생성 (옵셔널)
             boolean userServiceSuccess = false;
             String userId = null;
             try {
-                System.out.println("=== User Service 호출 시작 ===");
-                System.out.println("User Service URL: " + userServiceUrl + "/api/users");
+                // System.out.println("=== User Service 호출 시작 ===");
+                // System.out.println("User Service URL: " + userServiceUrl + "/api/users");
                 
                 HttpHeaders headers = new HttpHeaders();
                 headers.setContentType(MediaType.APPLICATION_JSON);
@@ -77,13 +77,13 @@ public class KeycloakAuthController {
                 userServiceSuccess = userResponse.getStatusCode().is2xxSuccessful();
                 if (userServiceSuccess && userResponse.getBody() != null) {
                     userId = userResponse.getBody().getUserId();
-                    System.out.println("User Service에서 생성된 userId: " + userId);
+                    // System.out.println("User Service에서 생성된 userId: " + userId);
                 } else {
-                    System.err.println("User Service 사용자 생성 실패: " + userResponse.getStatusCode());
+                    // System.err.println("User Service 사용자 생성 실패: " + userResponse.getStatusCode());
                 }
             } catch (HttpClientErrorException e) {
                 if (e.getStatusCode() == HttpStatus.CONFLICT) {
-                    System.err.println("이미 존재하는 사용자: " + request.getEmail());
+                    // System.err.println("이미 존재하는 사용자: " + request.getEmail());
                     // 이미 존재하는 경우 userId 조회
                     userId = getUserIdFromUserService(request.getEmail());
                     if (userId == null) {
@@ -91,13 +91,13 @@ public class KeycloakAuthController {
                             .body(new AuthResponse(false, "USER_ALREADY_EXISTS", null, null, null));
                     }
                 } else {
-                    System.err.println("User Service 클라이언트 오류: " + e.getMessage());
+                    // System.err.println("User Service 클라이언트 오류: " + e.getMessage());
                 }
             } catch (ResourceAccessException e) {
-                System.err.println("User Service 연결 실패 (서비스 없음): " + e.getMessage());
+                // System.err.println("User Service 연결 실패 (서비스 없음): " + e.getMessage());
                 // User Service가 없어도 Keycloak 등록은 진행
             } catch (Exception e) {
-                System.err.println("User Service 호출 중 오류: " + e.getMessage());
+                // System.err.println("User Service 호출 중 오류: " + e.getMessage());
             }
             
             // 2. KeyCloak에 사용자 생성 (필수) - userId 포함
@@ -125,7 +125,7 @@ public class KeycloakAuthController {
             return loginResponse;
             
         } catch (Exception e) {
-            System.err.println("회원가입 처리 중 예상치 못한 오류: " + e.getMessage());
+            // System.err.println("회원가입 처리 중 예상치 못한 오류: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(new AuthResponse(false, "REGISTRATION_FAILED", null, null, null));
         }
@@ -166,13 +166,13 @@ public class KeycloakAuthController {
             }
         } catch (HttpClientErrorException e) {
             // Keycloak HTTP 클라이언트 오류 (4xx)
-            System.err.println("Keycloak 로그인 오류 - Status: " + e.getStatusCode() + ", Body: " + e.getResponseBodyAsString());
+            // System.err.println("Keycloak 로그인 오류 - Status: " + e.getStatusCode() + ", Body: " + e.getResponseBodyAsString());
             switch (e.getStatusCode()) {
                 case UNAUTHORIZED:
                     return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                         .body(new AuthResponse(false, "INVALID_CREDENTIALS", null, null, null));
                 case BAD_REQUEST:
-                    System.err.println("BAD_REQUEST 상세: " + e.getResponseBodyAsString());
+                    // System.err.println("BAD_REQUEST 상세: " + e.getResponseBodyAsString());
                     return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                         .body(new AuthResponse(false, "INVALID_REQUEST", null, null, null));
                 case FORBIDDEN:
@@ -187,27 +187,27 @@ public class KeycloakAuthController {
             }
         } catch (HttpServerErrorException e) {
             // Keycloak 서버 오류 (5xx)
-            System.err.println("Keycloak 서버 오류: " + e.getMessage());
+            // System.err.println("Keycloak 서버 오류: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(new AuthResponse(false, "SERVICE_UNAVAILABLE", null, null, null));
         } catch (ResourceAccessException e) {
             // 네트워크 연결 오류
             if (e.getCause() instanceof UnknownHostException) {
-                System.err.println("Keycloak 서버를 찾을 수 없습니다: " + e.getMessage());
+                // System.err.println("Keycloak 서버를 찾을 수 없습니다: " + e.getMessage());
                 return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                     .body(new AuthResponse(false, "KEYCLOAK_UNAVAILABLE", null, null, null));
             } else if (e.getCause() instanceof SocketTimeoutException) {
-                System.err.println("Keycloak 서버 연결 타임아웃: " + e.getMessage());
+                // System.err.println("Keycloak 서버 연결 타임아웃: " + e.getMessage());
                 return ResponseEntity.status(HttpStatus.REQUEST_TIMEOUT)
                     .body(new AuthResponse(false, "CONNECTION_TIMEOUT", null, null, null));
             } else {
-                System.err.println("Keycloak 서버 연결 실패: " + e.getMessage());
+                // System.err.println("Keycloak 서버 연결 실패: " + e.getMessage());
                 return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                     .body(new AuthResponse(false, "CONNECTION_FAILED", null, null, null));
             }
         } catch (Exception e) {
             // 기타 예외
-            System.err.println("로그인 처리 중 예상치 못한 오류: " + e.getMessage());
+            // System.err.println("로그인 처리 중 예상치 못한 오류: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(new AuthResponse(false, "INTERNAL_ERROR", null, null, null));
         }
@@ -265,17 +265,17 @@ public class KeycloakAuthController {
             }
         } catch (HttpServerErrorException e) {
             // Keycloak 서버 오류 (5xx)
-            System.err.println("토큰 갱신 중 Keycloak 서버 오류: " + e.getMessage());
+            // System.err.println("토큰 갱신 중 Keycloak 서버 오류: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(new AuthResponse(false, "SERVICE_UNAVAILABLE", null, null, null));
         } catch (ResourceAccessException e) {
             // 네트워크 연결 오류
-            System.err.println("토큰 갱신 중 Keycloak 연결 실패: " + e.getMessage());
+            // System.err.println("토큰 갱신 중 Keycloak 연결 실패: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(new AuthResponse(false, "KEYCLOAK_UNAVAILABLE", null, null, null));
         } catch (Exception e) {
             // 기타 예외
-            System.err.println("토큰 갱신 처리 중 예상치 못한 오류: " + e.getMessage());
+            // System.err.println("토큰 갱신 처리 중 예상치 못한 오류: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(new AuthResponse(false, "INTERNAL_ERROR", null, null, null));
         }
@@ -310,22 +310,22 @@ public class KeycloakAuthController {
             return ResponseEntity.ok(Map.of("success", true, "message", "로그아웃 성공"));
         } catch (HttpClientErrorException e) {
             // Keycloak HTTP 클라이언트 오류 (4xx)
-            System.err.println("로그아웃 중 Keycloak 클라이언트 오류: " + e.getMessage());
+            // System.err.println("로그아웃 중 Keycloak 클라이언트 오류: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(Map.of("success", false, "message", "INVALID_LOGOUT_REQUEST"));
         } catch (HttpServerErrorException e) {
             // Keycloak 서버 오류 (5xx)
-            System.err.println("로그아웃 중 Keycloak 서버 오류: " + e.getMessage());
+            // System.err.println("로그아웃 중 Keycloak 서버 오류: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(Map.of("success", false, "message", "SERVICE_UNAVAILABLE"));
         } catch (ResourceAccessException e) {
             // 네트워크 연결 오류
-            System.err.println("로그아웃 중 Keycloak 연결 실패: " + e.getMessage());
+            // System.err.println("로그아웃 중 Keycloak 연결 실패: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(Map.of("success", false, "message", "KEYCLOAK_UNAVAILABLE"));
         } catch (Exception e) {
             // 기타 예외
-            System.err.println("로그아웃 처리 중 예상치 못한 오류: " + e.getMessage());
+            // System.err.println("로그아웃 처리 중 예상치 못한 오류: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of("success", false, "message", "INTERNAL_ERROR"));
         }
@@ -374,13 +374,13 @@ public class KeycloakAuthController {
 
     @GetMapping("/auth/test")
     public ResponseEntity<Map<String, String>> test() {
-        System.out.println("=== KeyCloak test endpoint called! ===");
+        // System.out.println("=== KeyCloak test endpoint called! ===");
         return ResponseEntity.ok(Map.of("message", "KeyCloak controller is working!"));
     }
     
     @PostMapping("/auth/simple-test")
     public ResponseEntity<Map<String, String>> simplePostTest() {
-        System.out.println("=== Simple POST test endpoint called! ===");
+        // System.out.println("=== Simple POST test endpoint called! ===");
         return ResponseEntity.ok(Map.of("message", "POST test successful!"));
     }
     
@@ -479,13 +479,13 @@ public class KeycloakAuthController {
                 "&redirect_uri=" + java.net.URLEncoder.encode(callbackUri, "UTF-8") +
                 "&kc_idp_hint=" + provider;
             
-            System.out.println("Social login redirect: " + authUrl);
+            // System.out.println("Social login redirect: " + authUrl);
             
             HttpHeaders headers = new HttpHeaders();
             headers.setLocation(java.net.URI.create(authUrl));
             return ResponseEntity.status(HttpStatus.FOUND).headers(headers).build();
         } catch (Exception e) {
-            System.err.println("Social login redirect error: " + e.getMessage());
+            // System.err.println("Social login redirect error: " + e.getMessage());
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
@@ -498,11 +498,11 @@ public class KeycloakAuthController {
             @RequestParam(required = false) String error,
             @RequestParam(required = false) String state) {
         try {
-            System.out.println("=== Social Login Callback ===");
-            System.out.println("Provider: " + provider);
-            System.out.println("Code: " + (code != null ? "present" : "null"));
-            System.out.println("Error: " + error);
-            System.out.println("State: " + state);
+            // System.out.println("=== Social Login Callback ===");
+            // System.out.println("Provider: " + provider);
+            // System.out.println("Code: " + (code != null ? "present" : "null"));
+            // System.out.println("Error: " + error);
+            // System.out.println("State: " + state);
             // 테스트 환경 - oauth.buildingbite.com으로 리다이렉트
             String frontendUrl = "https://oauth.buildingbite.com";
             
@@ -521,7 +521,7 @@ public class KeycloakAuthController {
             
             // 토큰 교환
             String tokenUrl = internalKeycloakUrl + "/realms/" + realm + "/protocol/openid-connect/token";
-            System.out.println("Token URL: " + tokenUrl);
+            // System.out.println("Token URL: " + tokenUrl);
             
             HttpHeaders tokenHeaders = new HttpHeaders();
             tokenHeaders.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
@@ -534,12 +534,12 @@ public class KeycloakAuthController {
             body.add("redirect_uri", "https://oauth.buildingbite.com/api/auth/" + provider + "/callback");
             body.add("scope", "openid email profile userId");
             
-            System.out.println("Token exchange request body: " + body);
+            // System.out.println("Token exchange request body: " + body);
             
             HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(body, tokenHeaders);
             ResponseEntity<Map> response = restTemplate.postForEntity(tokenUrl, entity, Map.class);
             
-            System.out.println("Token response status: " + response.getStatusCode());
+            // System.out.println("Token response status: " + response.getStatusCode());
             
             if (response.getStatusCode() == HttpStatus.OK) {
                 Map<String, Object> tokenResponse = response.getBody();
@@ -561,9 +561,9 @@ public class KeycloakAuthController {
                 return ResponseEntity.status(HttpStatus.FOUND).headers(headers).build();
             }
         } catch (Exception e) {
-            System.err.println("=== Social login callback error ===");
-            System.err.println("Error type: " + e.getClass().getSimpleName());
-            System.err.println("Error message: " + e.getMessage());
+            // System.err.println("=== Social login callback error ===");
+            // System.err.println("Error type: " + e.getClass().getSimpleName());
+            // System.err.println("Error message: " + e.getMessage());
             e.printStackTrace();
             
             String frontendUrl = "https://oauth.buildingbite.com";
@@ -595,7 +595,7 @@ public class KeycloakAuthController {
             }
         } catch (Exception e) {
             // 동기화 실패해도 로그인은 성공으로 처리 (비동기 처리 권장)
-            System.err.println("소셜 로그인 사용자 동기화 실패: " + e.getMessage());
+            // System.err.println("소셜 로그인 사용자 동기화 실패: " + e.getMessage());
         }
     }
     
@@ -622,11 +622,11 @@ public class KeycloakAuthController {
             ResponseEntity<Map> response = restTemplate.postForEntity(endpoint, entity, Map.class);
             
             if (response.getStatusCode().is2xxSuccessful()) {
-                System.out.println("유저 서비스 동기화 성공: " + email);
+                // System.out.println("유저 서비스 동기화 성공: " + email);
             }
         } catch (Exception e) {
             // 이미 존재하는 사용자일 수 있으므로 오류 무시
-            System.err.println("유저 서비스 동기화 실패: " + e.getMessage());
+            // System.err.println("유저 서비스 동기화 실패: " + e.getMessage());
         }
     }
     
@@ -645,7 +645,7 @@ public class KeycloakAuthController {
                 return (String) response.getBody().get("userId");
             }
         } catch (Exception e) {
-            System.err.println("User Service에서 userId 조회 실패: " + e.getMessage());
+            // System.err.println("User Service에서 userId 조회 실패: " + e.getMessage());
         }
         return null;
     }
@@ -667,7 +667,7 @@ public class KeycloakAuthController {
             ResponseEntity<Map> tokenResponse = restTemplate.postForEntity(tokenUrl, tokenEntity, Map.class);
             
             if (!tokenResponse.getStatusCode().is2xxSuccessful()) {
-                System.err.println("KeyCloak 서비스 계정 토큰 획득 실패");
+                // System.err.println("KeyCloak 서비스 계정 토큰 획득 실패");
                 return "TOKEN_FAILED";
             }
             
@@ -697,16 +697,16 @@ public class KeycloakAuthController {
             // User Service의 userId 추가
             if (userId != null && !userId.isEmpty()) {
                 attributes.put("userId", List.of(userId));
-                System.out.println("✅ Keycloak 사용자에 userId 추가: " + userId);
+                // System.out.println("✅ Keycloak 사용자에 userId 추가: " + userId);
             } else {
-                System.out.println("⚠️ userId가 null이거나 비어있음 - User Service 연동 확인 필요");
+                // System.out.println("⚠️ userId가 null이거나 비어있음 - User Service 연동 확인 필요");
             }
             
-            System.out.println("=== Keycloak 사용자 생성 시 attributes ===");
+            // System.out.println("=== Keycloak 사용자 생성 시 attributes ===");
             attributes.forEach((key, value) -> {
-                System.out.println("  " + key + ": " + value);
+                // System.out.println("  " + key + ": " + value);
             });
-            System.out.println("=== End attributes ===");
+            // System.out.println("=== End attributes ===");
             
             userRepresentation.put("attributes", attributes);
             
@@ -715,7 +715,7 @@ public class KeycloakAuthController {
             ResponseEntity<Void> createResponse = restTemplate.postForEntity(usersUrl, userEntity, Void.class);
             
             if (!createResponse.getStatusCode().is2xxSuccessful()) {
-                System.err.println("KeyCloak 사용자 생성 실패");
+                // System.err.println("KeyCloak 사용자 생성 실패");
                 return "CREATE_FAILED";
             }
             
@@ -734,19 +734,19 @@ public class KeycloakAuthController {
             HttpEntity<Map<String, Object>> passwordEntity = new HttpEntity<>(passwordData, userHeaders);
             restTemplate.exchange(passwordUrl, HttpMethod.PUT, passwordEntity, Void.class);
             
-            System.out.println("KeyCloak 사용자 생성 성공: " + request.getEmail());
+            // System.out.println("KeyCloak 사용자 생성 성공: " + request.getEmail());
             return "SUCCESS";
             
         } catch (HttpClientErrorException e) {
             if (e.getStatusCode() == HttpStatus.CONFLICT) {
-                System.err.println("중복 사용자 감지: " + request.getEmail());
+                // System.err.println("중복 사용자 감지: " + request.getEmail());
                 return "USER_EXISTS";
             } else {
-                System.err.println("KeyCloak 클라이언트 오류: " + e.getStatusCode() + " - " + e.getMessage());
+                // System.err.println("KeyCloak 클라이언트 오류: " + e.getStatusCode() + " - " + e.getMessage());
                 return "CLIENT_ERROR";
             }
         } catch (Exception e) {
-            System.err.println("KeyCloak 사용자 생성 중 오류: " + e.getMessage());
+            // System.err.println("KeyCloak 사용자 생성 중 오류: " + e.getMessage());
             return "UNKNOWN_ERROR";
         }
     }
@@ -771,7 +771,7 @@ public class KeycloakAuthController {
             ResponseEntity<Map> tokenResponse = restTemplate.postForEntity(tokenUrl, tokenEntity, Map.class);
             
             if (!tokenResponse.getStatusCode().is2xxSuccessful()) {
-                System.err.println("로그인 통계 업데이트: 토큰 획득 실패");
+                // System.err.println("로그인 통계 업데이트: 토큰 획득 실패");
                 return;
             }
             
@@ -788,7 +788,7 @@ public class KeycloakAuthController {
                 searchUrl, HttpMethod.GET, searchEntity, java.util.List.class);
             
             if (!searchResponse.getStatusCode().is2xxSuccessful() || searchResponse.getBody().isEmpty()) {
-                System.err.println("로그인 통계 업데이트: 사용자 검색 실패 - " + email);
+                // System.err.println("로그인 통계 업데이트: 사용자 검색 실패 - " + email);
                 return;
             }
             
@@ -835,7 +835,7 @@ public class KeycloakAuthController {
                 String userServiceUserId = getUserIdFromUserService(email);
                 if (userServiceUserId != null && !userServiceUserId.isEmpty()) {
                     updatedAttributes.put("userId", java.util.List.of(userServiceUserId));
-                    System.out.println("User Service에서 userId 조회 및 추가: " + userServiceUserId);
+                    // System.out.println("User Service에서 userId 조회 및 추가: " + userServiceUserId);
                 }
             }
             
@@ -852,11 +852,11 @@ public class KeycloakAuthController {
             HttpEntity<Map<String, Object>> updateEntity = new HttpEntity<>(updateData, updateHeaders);
             restTemplate.exchange(updateUrl, HttpMethod.PUT, updateEntity, Void.class);
             
-            System.out.println("로그인 통계 업데이트 성공: " + email + " (로그인 횟수: " + newCount + ")");
+            // System.out.println("로그인 통계 업데이트 성공: " + email + " (로그인 횟수: " + newCount + ")");
             
         } catch (Exception e) {
             // 통계 업데이트 실패해도 로그인은 성공으로 처리
-            System.err.println("로그인 통계 업데이트 실패 (로그인은 성공): " + e.getMessage());
+            // System.err.println("로그인 통계 업데이트 실패 (로그인은 성공): " + e.getMessage());
         }
     }
     
@@ -867,13 +867,13 @@ public class KeycloakAuthController {
         int attempt = 0;
         while (attempt < maxRetries) {
             attempt++;
-            System.out.println("=== 재시도 로그인 시도 " + attempt + "/" + maxRetries + " ===");
+            // System.out.println("=== 재시도 로그인 시도 " + attempt + "/" + maxRetries + " ===");
             
             ResponseEntity<AuthResponse> response = login(request);
             
             // 로그인 실패 시 즉시 반환
             if (!response.getStatusCode().is2xxSuccessful()) {
-                System.err.println("로그인 실패 - 재시도 중단");
+                // System.err.println("로그인 실패 - 재시도 중단");
                 return response;
             }
             
@@ -882,10 +882,10 @@ public class KeycloakAuthController {
             if (authResponse != null && authResponse.getToken() != null) {
                 String token = authResponse.getToken();
                 if (isUserIdInToken(token, expectedUserId)) {
-                    System.out.println("✅ JWT에 userId가 정상적으로 포함됨: " + expectedUserId);
+                    // System.out.println("✅ JWT에 userId가 정상적으로 포함됨: " + expectedUserId);
                     return response;
                 } else {
-                    System.out.println("⚠️ JWT에 userId가 누락됨 - 재시도 필요 (시도 " + attempt + "/" + maxRetries + ")");
+                    // System.out.println("⚠️ JWT에 userId가 누락됨 - 재시도 필요 (시도 " + attempt + "/" + maxRetries + ")");
                 }
             }
             
@@ -901,7 +901,7 @@ public class KeycloakAuthController {
         }
         
         // 모든 재시도 실패 시 마지막 응답 반환
-        System.err.println("❌ 모든 재시도 실패 - userId가 JWT에 포함되지 않았지만 로그인은 성공");
+        // System.err.println("❌ 모든 재시도 실패 - userId가 JWT에 포함되지 않았지만 로그인은 성공");
         return login(request);
     }
     
@@ -913,8 +913,8 @@ public class KeycloakAuthController {
             com.auth0.jwt.interfaces.DecodedJWT jwt = com.auth0.jwt.JWT.decode(token);
             String tokenUserId = jwt.getClaim("userId") != null ? jwt.getClaim("userId").asString() : null;
             
-            System.out.println("토큰에서 추출한 userId: " + tokenUserId);
-            System.out.println("예상 userId: " + expectedUserId);
+            // System.out.println("토큰에서 추출한 userId: " + tokenUserId);
+            // System.out.println("예상 userId: " + expectedUserId);
             
             // expectedUserId가 null이면 토큰에 userId가 있기만 하면 됨
             if (expectedUserId == null || expectedUserId.isEmpty()) {
@@ -924,7 +924,7 @@ public class KeycloakAuthController {
             // 정확한 userId 매칭
             return expectedUserId.equals(tokenUserId);
         } catch (Exception e) {
-            System.err.println("JWT 토큰 파싱 오류: " + e.getMessage());
+            // System.err.println("JWT 토큰 파싱 오류: " + e.getMessage());
             return false;
         }
     }

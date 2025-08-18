@@ -45,10 +45,16 @@ public class SSEResponseFilter implements GlobalFilter, Ordered {
                         headers.set("Cache-Control", "no-cache");
                         headers.set("Connection", "keep-alive");
                         
+                        // CORS 헤더 추가 (SSE 스트리밍용)
+                        headers.set("Access-Control-Allow-Origin", "https://buildingbite.com");
+                        headers.set("Access-Control-Allow-Credentials", "true");
+                        headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+                        headers.set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Requested-With");
+                        
                         // 청크 전송 활성화
                         headers.set("Transfer-Encoding", "chunked");
                         
-                        System.out.println("SSE Response configured for: " + path);
+                        // SSE 응답 설정됨
                         
                         // Flux로 스트리밍
                         if (body instanceof Flux) {
@@ -59,10 +65,10 @@ public class SSEResponseFilter implements GlobalFilter, Ordered {
                                     originalResponse.bufferFactory().allocateBuffer(0);
                                 })
                                 .doOnComplete(() -> {
-                                    System.out.println("SSE stream completed for: " + path);
+                                    // System.out.println("SSE stream completed for: " + path);
                                 })
                                 .doOnError(error -> {
-                                    System.err.println("SSE stream error for " + path + ": " + error.getMessage());
+                                    // System.err.println("SSE stream error for " + path + ": " + error.getMessage());
                                 }));
                         }
                     }
@@ -70,7 +76,7 @@ public class SSEResponseFilter implements GlobalFilter, Ordered {
                     // 202 Accepted 처리
                     if (getStatusCode() == HttpStatus.ACCEPTED) {
                         headers.set("X-Accel-Buffering", "no");
-                        System.out.println("202 Accepted for async processing: " + path);
+                        // System.out.println("202 Accepted for async processing: " + path);
                     }
                     
                     return super.writeWith(body);

@@ -26,7 +26,8 @@
       "Bash(docker build:*)",
       "Bash(mvn clean:*)",
       "Bash(kubectl wait:*)",
-      "Bash(docker push:*)"
+      "Bash(docker push:*)",
+      "Bash(grep:*)"
     ],
     "deny": []
   }

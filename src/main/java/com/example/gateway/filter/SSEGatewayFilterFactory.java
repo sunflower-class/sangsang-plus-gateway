@@ -39,16 +39,14 @@ public class SSEGatewayFilterFactory extends AbstractGatewayFilterFactory<SSEGat
                     // 버퍼링 비활성화
                     response.setStatusCode(HttpStatus.OK);
                     
-                    System.out.println("SSE Response detected for path: " + 
-                        exchange.getRequest().getPath());
+                    // SSE Response detected
                 }
                 
                 // 202 Accepted 응답 처리 (비동기 처리)
                 if (response.getStatusCode() == HttpStatus.ACCEPTED) {
                     // 202 응답도 버퍼링 없이 즉시 전달
                     headers.set("X-Accel-Buffering", "no");
-                    System.out.println("202 Accepted response for path: " + 
-                        exchange.getRequest().getPath());
+                    // 202 Accepted response
                 }
             }));
         };

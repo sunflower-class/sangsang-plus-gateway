@@ -2,6 +2,8 @@ package com.example.gateway.service;
 
 import com.example.gateway.dto.request.CreateUserRequest;
 import com.example.gateway.dto.response.UserResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
@@ -18,6 +20,7 @@ import java.util.Map;
 @Service
 public class UserService {
     
+    private static final Logger log = LoggerFactory.getLogger(UserService.class);
     private final RestTemplate restTemplate = new RestTemplate();
     
     @Value("${user-service.url:http://user-service.sangsangplus-backend.svc.cluster.local}")
@@ -27,6 +30,10 @@ public class UserService {
     private final String realm = "sangsang-plus";
     private final String clientId = "gateway-client";
     private final String clientSecret = "XQtlIuzXO3so9C536kY6HVFNgFSJVHHK";
+    
+    public String getUserServiceUrl() {
+        return userServiceUrl;
+    }
     
     /**
      * User Service에 사용자 생성
@@ -56,9 +63,9 @@ public class UserService {
                 // 이미 존재하는 경우 userId 조회
                 return getUserIdFromUserService(request.getEmail());
             }
-            System.err.println("User Service 사용자 생성 실패: " + e.getMessage());
+            // System.err.println("User Service 사용자 생성 실패: " + e.getMessage());
         } catch (Exception e) {
-            System.err.println("User Service 연결 실패: " + e.getMessage());
+            // System.err.println("User Service 연결 실패: " + e.getMessage());
         }
         return null;
     }
@@ -80,11 +87,11 @@ public class UserService {
             // X-User-Id와 X-User-Email 헤더 추가 (User Service가 요구하는 헤더)
             if (userIdForHeader != null && !userIdForHeader.isEmpty()) {
                 headers.set("X-User-Id", userIdForHeader);
-                System.out.println("X-User-Id 헤더 추가함: " + userIdForHeader);
+                log.debug("Added X-User-Id header: {}", userIdForHeader);
             }
             if (userEmail != null && !userEmail.isEmpty()) {
                 headers.set("X-User-Email", userEmail);
-                System.out.println("X-User-Email 헤더 추가함: " + userEmail);
+                log.debug("Added X-User-Email header: {}", userEmail);
             }
             
             HttpEntity<Void> entity = new HttpEntity<>(headers);
@@ -101,9 +108,9 @@ public class UserService {
             if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
                 return true; // 이미 없으면 성공으로 처리
             }
-            System.err.println("User Service 아이디 기반 삭제 실패: " + e.getMessage());
+            // System.err.println("User Service 아이디 기반 삭제 실패: " + e.getMessage());
         } catch (Exception e) {
-            System.err.println("User Service 연결 실패: " + e.getMessage());
+            // System.err.println("User Service 연결 실패: " + e.getMessage());
         }
         return false;
     }
@@ -128,9 +135,9 @@ public class UserService {
             if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
                 return true; // 이미 없으면 성공으로 처리
             }
-            System.err.println("User Service 이메일 기반 삭제 실패: " + e.getMessage());
+            // System.err.println("User Service 이메일 기반 삭제 실패: " + e.getMessage());
         } catch (Exception e) {
-            System.err.println("User Service 연결 실패: " + e.getMessage());
+            // System.err.println("User Service 연결 실패: " + e.getMessage());
         }
         return false;
     }
@@ -153,11 +160,11 @@ public class UserService {
             // X-User-Id와 X-User-Email 헤더 추가 (User Service가 요구하는 헤더)
             if (userIdForHeader != null && !userIdForHeader.isEmpty()) {
                 headers.set("X-User-Id", userIdForHeader);
-                System.out.println("X-User-Id 헤더 추가함: " + userIdForHeader);
+                log.debug("Added X-User-Id header: {}", userIdForHeader);
             }
             if (userEmail != null && !userEmail.isEmpty()) {
                 headers.set("X-User-Email", userEmail);
-                System.out.println("X-User-Email 헤더 추가함: " + userEmail);
+                log.debug("Added X-User-Email header: {}", userEmail);
             }
             
             HttpEntity<Map<String, String>> entity = new HttpEntity<>(updateData, headers);
@@ -170,7 +177,7 @@ public class UserService {
             
             return response.getStatusCode().is2xxSuccessful();
         } catch (Exception e) {
-            System.err.println("User Service 사용자 수정 실패: " + e.getMessage());
+            // System.err.println("User Service 사용자 수정 실패: " + e.getMessage());
             return false;
         }
     }
@@ -193,7 +200,7 @@ public class UserService {
             
             return response.getStatusCode().is2xxSuccessful();
         } catch (Exception e) {
-            System.err.println("User Service 이메일 기반 사용자 수정 실패: " + e.getMessage());
+            // System.err.println("User Service 이메일 기반 사용자 수정 실패: " + e.getMessage());
             return false;
         }
     }
@@ -216,7 +223,7 @@ public class UserService {
                 return (String) response.getBody().get("userId");
             }
         } catch (Exception e) {
-            System.err.println("User Service에서 userId 조회 실패: " + e.getMessage());
+            // System.err.println("User Service에서 userId 조회 실패: " + e.getMessage());
         }
         return null;
     }
@@ -398,7 +405,7 @@ public class UserService {
             return passwordResponse.getStatusCode().is2xxSuccessful();
             
         } catch (Exception e) {
-            System.err.println("Keycloak 패스워드 변경 실패: " + e.getMessage());
+            // System.err.println("Keycloak 패스워드 변경 실패: " + e.getMessage());
             return false;
         }
     }
@@ -432,16 +439,16 @@ public class UserService {
                 List<String> userIdList = (List<String>) attributes.get("userId");
                 if (userIdList != null && !userIdList.isEmpty()) {
                     String userId = userIdList.get(0);
-                    System.out.println("Found userId in Keycloak attributes: " + userId);
+                    log.debug("Found userId in Keycloak: {}", userId);
                     return userId;
                 }
             }
             
-            System.out.println("No userId attribute found in Keycloak user");
+            log.debug("No userId found in Keycloak attributes");
             return null;
             
         } catch (Exception e) {
-            System.err.println("Keycloak에서 사용자 찾기 실패: " + e.getMessage());
+            // System.err.println("Keycloak에서 사용자 찾기 실패: " + e.getMessage());
             return null;
         }
     }
@@ -464,7 +471,7 @@ public class UserService {
                 return (String) response.getBody().get("userId");
             }
         } catch (Exception e) {
-            System.err.println("UserService에서 Keycloak ID로 userId 조회 실패: " + e.getMessage());
+            // System.err.println("UserService에서 Keycloak ID로 userId 조회 실패: " + e.getMessage());
         }
         return null;
     }
@@ -491,7 +498,7 @@ public class UserService {
                 return (String) tokenResponse.getBody().get("access_token");
             }
         } catch (Exception e) {
-            System.err.println("Keycloak 토큰 획득 실패: " + e.getMessage());
+            // System.err.println("Keycloak 토큰 획득 실패: " + e.getMessage());
         }
         return null;
     }

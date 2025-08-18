@@ -36,7 +36,7 @@ public class DotenvConfig implements ApplicationContextInitializer<ConfigurableA
         
         if (!dotenvMap.isEmpty()) {
             environment.getPropertySources().addFirst(new MapPropertySource("dotenv", dotenvMap));
-            System.out.println("Loaded " + dotenvMap.size() + " variables from .env file");
+            // System.out.println("Loaded " + dotenvMap.size() + " variables from .env file");
         }
     }
 }
