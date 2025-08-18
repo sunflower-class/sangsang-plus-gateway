@@ -63,13 +63,21 @@ public class JwtAuthGatewayFilterFactory extends AbstractGatewayFilterFactory<Jw
         return (exchange, chain) -> {
             ServerHttpRequest request = exchange.getRequest();
             String authHeader = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+            String token = null;
             
-            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            // 1. Authorization 헤더에서 토큰 추출
+            if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                token = authHeader.substring(7);
+            }
+            // 2. URL 파라미터에서 토큰 추출 (SSE 연결용)
+            else if (request.getQueryParams().containsKey("token")) {
+                token = request.getQueryParams().getFirst("token");
+            }
+            
+            if (token == null || token.isEmpty()) {
                 log.debug("No token: {} {}", request.getMethod(), request.getPath());
                 return onError(exchange, "토큰이 없습니다", HttpStatus.UNAUTHORIZED);
             }
-            
-            String token = authHeader.substring(7);
             
             try {
                 RSAPublicKey key = getPublicKey();
