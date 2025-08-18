@@ -121,7 +121,7 @@ spring:
           predicates:
             - Path=/api/notifications/**
           filters:
-            # - JwtAuth  # 임시로 JWT 인증 비활성화 - 테스트용
+            - NotificationJwtFilter
             - name: AddResponseHeader
               args:
                 name: X-Accel-Buffering
