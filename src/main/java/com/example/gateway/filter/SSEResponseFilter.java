@@ -35,6 +35,9 @@ public class SSEResponseFilter implements GlobalFilter, Ordered {
                     HttpHeaders headers = getHeaders();
                     MediaType contentType = headers.getContentType();
                     
+                    // 디버그: Content-Type 확인
+                    System.out.println("DEBUG: Path=" + path + ", Content-Type=" + contentType);
+                    
                     // SSE 응답 처리
                     if (contentType != null && 
                         (MediaType.TEXT_EVENT_STREAM.equals(contentType) || 
@@ -54,7 +57,7 @@ public class SSEResponseFilter implements GlobalFilter, Ordered {
                         // 청크 전송 활성화
                         headers.set("Transfer-Encoding", "chunked");
                         
-                        // SSE 응답 설정됨
+                        System.out.println("SSE Response configured for: " + path);
                         
                         // Flux로 스트리밍
                         if (body instanceof Flux) {
@@ -71,6 +74,9 @@ public class SSEResponseFilter implements GlobalFilter, Ordered {
                                     // System.err.println("SSE stream error for " + path + ": " + error.getMessage());
                                 }));
                         }
+                    } else {
+                        // SSE가 아닌 일반 응답도 즉시 전달
+                        System.out.println("Non-SSE response for: " + path + ", Content-Type=" + contentType);
                     }
                     
                     // 202 Accepted 처리
