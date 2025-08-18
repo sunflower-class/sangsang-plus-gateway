@@ -1,9 +1,5 @@
 server:
   port: 8080
-  netty:
-    # SSE를 위한 Netty 서버 설정
-    idle-timeout: 120s  # idle 연결 타임아웃
-    connection-timeout: 10s  # 연결 타임아웃
 
 spring:
   application:
@@ -14,14 +10,8 @@ spring:
   cloud:
     gateway:
       httpclient:
-        # SSE를 위한 타임아웃 설정
-        connect-timeout: 5000  # 연결 타임아웃 5초
-        response-timeout: 120s  # 응답 타임아웃 120초 (SSE는 긴 연결)
-        pool:
-          type: elastic  # 탄력적 연결 풀 사용
-          max-idle-time: 10s
-        # WebSocket/SSE를 위한 설정
-        wiretap: false  # 디버깅 비활성화로 성능 향상
+        connect-timeout: 10000  # 10초 연결 타임아웃
+        response-timeout: 600s  # 10분 응답 타임아웃 (넉넉하게)
       globalcors:
         corsConfigurations:
           '[/**]':
@@ -121,15 +111,7 @@ spring:
           predicates:
             - Path=/api/notifications/**
           filters:
-            - NotificationJwtFilter
-            - name: AddResponseHeader
-              args:
-                name: X-Accel-Buffering
-                value: "no"  # 프록시 버퍼링 비활성화
-            - name: AddResponseHeader
-              args:
-                name: Cache-Control
-                value: "no-cache, no-transform"  # 캐싱 비활성화
+            - JwtAuth
           metadata:
             response-timeout: 600000  # 600초 타임아웃 (밀리초 단위)
 
