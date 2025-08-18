@@ -45,6 +45,7 @@ public class KeycloakAuthController {
 
     private final RestTemplate restTemplate = new RestTemplate();
 
+
     @PostMapping("/auth/register")
     public ResponseEntity<AuthResponse> register(@Valid @RequestBody CreateUserRequest request) {
         // System.out.println("=== 회원가입 요청 시작 ===");

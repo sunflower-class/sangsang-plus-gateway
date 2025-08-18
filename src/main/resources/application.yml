@@ -27,7 +27,16 @@ spring:
               - OPTIONS
               - PATCH
             allowedHeaders:
-              - "*"
+              - "Authorization"
+              - "Content-Type"
+              - "X-Requested-With"
+              - "Accept"
+              - "Origin"
+              - "Access-Control-Request-Method"
+              - "Access-Control-Request-Headers"
+              - "X-User-Id"
+              - "X-User-Email"
+              - "X-User-Role"
             allowCredentials: true
             maxAge: 3600
       routes:
@@ -112,6 +121,18 @@ spring:
             - Path=/api/notifications/**
           filters:
             - JwtAuth
+            - name: AddResponseHeader
+              args:
+                name: Cache-Control
+                value: "no-cache, no-transform"
+            - name: AddResponseHeader
+              args:
+                name: Connection
+                value: "keep-alive"
+            - name: AddResponseHeader
+              args:
+                name: X-Accel-Buffering
+                value: "no"
           metadata:
             response-timeout: 600000  # 600초 타임아웃 (밀리초 단위)
 

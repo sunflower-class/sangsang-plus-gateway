@@ -47,7 +47,11 @@ public class SecurityConfig {
             "https://oauth.buildingbite.com"
         ));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
-        configuration.setAllowedHeaders(Arrays.asList("*"));
+        configuration.setAllowedHeaders(Arrays.asList(
+            "Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin",
+            "Access-Control-Request-Method", "Access-Control-Request-Headers",
+            "X-User-Id", "X-User-Email", "X-User-Role"
+        ));
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);
         

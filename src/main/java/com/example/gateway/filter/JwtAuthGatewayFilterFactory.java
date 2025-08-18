@@ -72,10 +72,42 @@ public class JwtAuthGatewayFilterFactory extends AbstractGatewayFilterFactory<Jw
             // 2. URL 파라미터에서 토큰 추출 (SSE 연결용)
             else if (request.getQueryParams().containsKey("token")) {
                 token = request.getQueryParams().getFirst("token");
+                // undefined 문자열이나 빈 값 처리
+                if ("undefined".equals(token) || "null".equals(token) || token == null || token.trim().isEmpty()) {
+                    // SSE 요청인 경우 특별 처리
+                    if (request.getPath().value().contains("/notifications/stream")) {
+                        if ("undefined".equals(token) || "null".equals(token)) {
+                            return onErrorSSE(exchange, "AUTH_TOKEN_INVALID_FORMAT", 
+                                "Token format is invalid", 
+                                "Token value '" + token + "' is not a valid JWT");
+                        }
+                        return onErrorSSE(exchange, "AUTH_TOKEN_MISSING", 
+                            "SSE connection requires authentication", null);
+                    }
+                    // 일반 요청인 경우
+                    if ("undefined".equals(token) || "null".equals(token)) {
+                        return onErrorJson(exchange, "AUTH_TOKEN_INVALID_FORMAT", 
+                            "Token format is invalid", 
+                            "Token value '" + token + "' is not a valid JWT");
+                    }
+                    token = null;
+                }
             }
             
             if (token == null || token.isEmpty()) {
-                // No token provided - pass through without authentication headers
+                // SSE 요청인 경우 인증 필요
+                if (request.getPath().value().contains("/notifications/stream")) {
+                    return onErrorSSE(exchange, "AUTH_TOKEN_MISSING", 
+                        "SSE connection requires authentication", null);
+                }
+                // 일반 요청에서 토큰이 없는 경우
+                if (request.getPath().value().startsWith("/api/notifications") ||
+                    request.getPath().value().startsWith("/api/users") ||
+                    request.getPath().value().startsWith("/api/products")) {
+                    return onErrorJson(exchange, "AUTH_TOKEN_MISSING", 
+                        "Authentication token is required", null);
+                }
+                // 인증이 필요없는 경로는 통과
                 log.debug("No token: {} {}", request.getMethod(), request.getPath());
                 return chain.filter(exchange);
             }
@@ -251,6 +283,46 @@ public class JwtAuthGatewayFilterFactory extends AbstractGatewayFilterFactory<Jw
         String body = "{\"error\":\"" + err + "\"}";
         DataBuffer buffer = response.bufferFactory().wrap(body.getBytes(StandardCharsets.UTF_8));
         
+        return response.writeWith(Mono.just(buffer));
+    }
+    
+    private Mono<Void> onErrorJson(org.springframework.web.server.ServerWebExchange exchange, 
+                                   String code, String message, String details) {
+        ServerHttpResponse response = exchange.getResponse();
+        response.setStatusCode(HttpStatus.UNAUTHORIZED);
+        response.getHeaders().add("Content-Type", MediaType.APPLICATION_JSON_VALUE);
+        
+        StringBuilder json = new StringBuilder();
+        json.append("{\"error\":{");
+        json.append("\"code\":\"").append(code).append("\",");
+        json.append("\"message\":\"").append(message).append("\"");
+        if (details != null) {
+            json.append(",\"details\":\"").append(details).append("\"");
+        }
+        json.append("}}");
+        
+        DataBuffer buffer = response.bufferFactory().wrap(json.toString().getBytes(StandardCharsets.UTF_8));
+        return response.writeWith(Mono.just(buffer));
+    }
+    
+    private Mono<Void> onErrorSSE(org.springframework.web.server.ServerWebExchange exchange, 
+                                  String code, String message, String details) {
+        ServerHttpResponse response = exchange.getResponse();
+        response.setStatusCode(HttpStatus.UNAUTHORIZED);
+        response.getHeaders().add("Content-Type", "text/event-stream");
+        response.getHeaders().add("Cache-Control", "no-cache");
+        response.getHeaders().add("Connection", "keep-alive");
+        
+        StringBuilder sse = new StringBuilder();
+        sse.append("event: error\n");
+        sse.append("data: {\"code\":\"").append(code).append("\",");
+        sse.append("\"message\":\"").append(message).append("\"");
+        if (details != null) {
+            sse.append(",\"details\":\"").append(details).append("\"");
+        }
+        sse.append("}\n\n");
+        
+        DataBuffer buffer = response.bufferFactory().wrap(sse.toString().getBytes(StandardCharsets.UTF_8));
         return response.writeWith(Mono.just(buffer));
     }
     
