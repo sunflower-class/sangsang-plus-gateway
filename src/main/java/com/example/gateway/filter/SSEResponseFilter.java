@@ -59,20 +59,32 @@ public class SSEResponseFilter implements GlobalFilter, Ordered {
                         
                         System.out.println("SSE Response configured for: " + path);
                         
+                        // 즉시 연결 확인 메시지 전송
+                        String connectionMessage = "data: {\"type\":\"connected\",\"message\":\"SSE connection established\"}\n\n";
+                        DataBuffer connectionBuffer = originalResponse.bufferFactory().wrap(connectionMessage.getBytes());
+                        
                         // Flux로 스트리밍
                         if (body instanceof Flux) {
                             Flux<? extends DataBuffer> fluxBody = (Flux<? extends DataBuffer>) body;
-                            return super.writeWith(fluxBody
+                            // 연결 메시지를 먼저 보내고, 그 다음 실제 스트림 데이터
+                            Flux<DataBuffer> combinedFlux = Flux.concat(
+                                Flux.just(connectionBuffer),
+                                fluxBody
+                            );
+                            return super.writeWith(combinedFlux
                                 .doOnNext(dataBuffer -> {
                                     // 각 데이터 청크 즉시 플러시
-                                    originalResponse.bufferFactory().allocateBuffer(0);
+                                    System.out.println("SSE data sent: " + dataBuffer.readableByteCount() + " bytes");
                                 })
                                 .doOnComplete(() -> {
-                                    // System.out.println("SSE stream completed for: " + path);
+                                    System.out.println("SSE stream completed for: " + path);
                                 })
                                 .doOnError(error -> {
-                                    // System.err.println("SSE stream error for " + path + ": " + error.getMessage());
+                                    System.out.println("SSE stream error for " + path + ": " + error.getMessage());
                                 }));
+                        } else {
+                            // body가 Flux가 아닌 경우 연결 메시지만 전송
+                            return super.writeWith(Flux.just(connectionBuffer));
                         }
                     } else {
                         // SSE가 아닌 일반 응답도 즉시 전달
