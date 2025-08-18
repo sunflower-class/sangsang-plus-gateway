@@ -89,7 +89,7 @@ public class JwtAuthGatewayFilterFactory extends AbstractGatewayFilterFactory<Jw
                 
                 Algorithm algorithm = Algorithm.RSA256(key, null);
                 JWTVerifier verifier = JWT.require(algorithm)
-                    .withIssuer("http://keycloak:8080/realms/" + realm)
+                    .withIssuer("http://oauth.buildingbite.com/realms/" + realm)
                     .build();
                 
                 DecodedJWT jwt = verifier.verify(token);
