@@ -55,7 +55,7 @@ spring:
             - JwtAuth
             
         - id: product-service
-          uri: ${PRODUCT_SERVICE_URL:http://product-service.sangsangplus-backend.svc.cluster.local}
+          uri: ${PRODUCT_SERVICE_URL:http://product-details-service.sangsangplus-backend.svc.cluster.local}
           predicates:
             - Path=/api/products/**
           filters:
