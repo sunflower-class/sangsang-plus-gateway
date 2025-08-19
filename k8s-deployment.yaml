@@ -28,7 +28,7 @@ spec:
         
         # Product 서비스 URL
         - name: PRODUCT_SERVICE_URL
-          value: "http://product-service.sangsangplus-backend.svc.cluster.local"
+          value: "http://product-details-service.sangsangplus-backend.svc.cluster.local"
         
         # Review 서비스 URL
         - name: REVIEW_SERVICE_URL
