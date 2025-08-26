@@ -82,22 +82,6 @@ spring:
               args:
                 name: Cache-Control
                 value: "no-cache, no-transform"  # 캐싱 비활성화
-            - name: AddResponseHeader
-              args:
-                name: Access-Control-Allow-Origin
-                value: "https://buildingbite.com"
-            - name: AddResponseHeader
-              args:
-                name: Access-Control-Allow-Credentials
-                value: "true"
-            - name: AddResponseHeader
-              args:
-                name: Access-Control-Allow-Methods
-                value: "GET, POST, PUT, DELETE, OPTIONS"
-            - name: AddResponseHeader
-              args:
-                name: Access-Control-Allow-Headers
-                value: "Authorization, Content-Type, X-Requested-With"
           metadata:
             response-timeout: 300000  # 300초 타임아웃 (밀리초 단위)
         
