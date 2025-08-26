@@ -5,7 +5,7 @@ metadata:
   labels:
     app: sangsang-plus-gateway
 spec:
-  replicas: 1
+  replicas: 2  # HA를 위해 2개로 증가
   revisionHistoryLimit: 3
   selector:
     matchLabels:
@@ -15,6 +15,16 @@ spec:
       labels:
         app: sangsang-plus-gateway
     spec:
+      # Pod Anti-affinity 추가 - 파드들이 다른 노드에 분산
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: sangsang-plus-gateway
+              topologyKey: kubernetes.io/hostname
       containers:
       - name: gateway
         image: buildingbite/sangsangplus-gateway:dev
@@ -112,6 +122,44 @@ spec:
       port: 80          # 클러스터 내부에서 접근할 포트
       targetPort: 8080  # 컨테이너 내부 포트
   type: ClusterIP  # Ingress를 통해 접근하므로 ClusterIP 사용
+---
+---
+# HorizontalPodAutoscaler for Gateway
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: sangsang-plus-gateway
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: sangsang-plus-gateway
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+---
+# PodDisruptionBudget for Gateway
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: sangsang-plus-gateway
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: sangsang-plus-gateway
 ---
 # Secret 생성은 별도 명령어로 처리 (민감정보 보안)
 # kubectl create secret generic gateway-secrets \

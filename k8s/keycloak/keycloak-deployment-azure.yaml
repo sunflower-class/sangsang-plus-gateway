@@ -5,7 +5,7 @@ metadata:
   labels:
     app: keycloak
 spec:
-  replicas: 1
+  replicas: 2  # HA를 위해 2개로 증가
   selector:
     matchLabels:
       app: keycloak
@@ -14,6 +14,16 @@ spec:
       labels:
         app: keycloak
     spec:
+      # Pod Anti-affinity 추가 - 파드들이 다른 노드에 분산
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: keycloak
+              topologyKey: kubernetes.io/hostname
       containers:
       - name: keycloak
         image: quay.io/keycloak/keycloak:22.0.5
@@ -74,3 +84,40 @@ spec:
       port: 8080
       targetPort: 8080
   type: ClusterIP
+---
+# HorizontalPodAutoscaler for Keycloak
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: keycloak
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: keycloak
+  minReplicas: 2
+  maxReplicas: 3
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+---
+# PodDisruptionBudget for Keycloak
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: keycloak
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: keycloak
