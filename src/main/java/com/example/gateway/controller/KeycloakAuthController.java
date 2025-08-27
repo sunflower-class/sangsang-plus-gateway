@@ -243,11 +243,19 @@ public class KeycloakAuthController {
 
             if (response.getStatusCode() == HttpStatus.OK) {
                 Map<String, Object> tokenResponse = response.getBody();
+                
+                // Keycloak이 새로운 refresh_token을 반환하지 않으면 기존 것을 사용
+                String newRefreshToken = (String) tokenResponse.get("refresh_token");
+                if (newRefreshToken == null || newRefreshToken.isEmpty()) {
+                    newRefreshToken = refreshToken; // 기존 refresh token 재사용
+                    System.out.println("Keycloak이 새로운 refresh_token을 반환하지 않아 기존 토큰을 재사용합니다.");
+                }
+                
                 return ResponseEntity.ok(new AuthResponse(
                     true,
                     "토큰 갱신 성공",
                     (String) tokenResponse.get("access_token"),
-                    (String) tokenResponse.get("refresh_token"),
+                    newRefreshToken,
                     (Integer) tokenResponse.get("expires_in")
                 ));
             }
@@ -286,27 +294,36 @@ public class KeycloakAuthController {
     }
 
     @PostMapping("/auth/logout")
-    @PreAuthorize("hasRole('USER')")
+    // @PreAuthorize 제거 - 로그아웃은 토큰 검증 없이도 가능해야 함
     public ResponseEntity<Map<String, Object>> logout(@RequestBody Map<String, String> request) {
         try {
             String refreshToken = request.get("refresh_token");
-            if (refreshToken == null) {
-                return ResponseEntity.badRequest()
-                    .body(Map.of("success", false, "message", "refresh_token이 필요합니다"));
+            if (refreshToken == null || refreshToken.isEmpty()) {
+                // refresh_token이 없어도 로그아웃은 성공 처리
+                System.out.println("로그아웃 요청: refresh_token이 없지만 성공 처리");
+                return ResponseEntity.ok(Map.of("success", true, "message", "로그아웃 성공"));
             }
 
-            String logoutUrl = internalKeycloakUrl + "/realms/" + realm + "/protocol/openid-connect/logout";
-            
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+            try {
+                // Keycloak 로그아웃 시도
+                String logoutUrl = internalKeycloakUrl + "/realms/" + realm + "/protocol/openid-connect/logout";
+                
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
 
-            MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
-            body.add("client_id", clientId);
-            body.add("client_secret", clientSecret);
-            body.add("refresh_token", refreshToken);
+                MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+                body.add("client_id", clientId);
+                body.add("client_secret", clientSecret);
+                body.add("refresh_token", refreshToken);
 
-            HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(body, headers);
-            restTemplate.postForEntity(logoutUrl, entity, String.class);
+                HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(body, headers);
+                ResponseEntity<String> response = restTemplate.postForEntity(logoutUrl, entity, String.class);
+                
+                System.out.println("Keycloak 로그아웃 응답: " + response.getStatusCode());
+            } catch (Exception keycloakError) {
+                // Keycloak 로그아웃 실패해도 클라이언트 측 로그아웃은 성공 처리
+                System.err.println("Keycloak 로그아웃 실패 (무시): " + keycloakError.getMessage());
+            }
 
             return ResponseEntity.ok(Map.of("success", true, "message", "로그아웃 성공"));
         } catch (HttpClientErrorException e) {
