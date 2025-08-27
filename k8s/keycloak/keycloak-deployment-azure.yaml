@@ -47,8 +47,8 @@ spec:
             secretKeyRef:
               name: keycloak-secrets
               key: azure-db-password
-        # - name: KC_HOSTNAME
-        #   value: "oauth.buildingbite.com"
+        - name: KC_HOSTNAME
+          value: "oauth.buildingbite.com"
         - name: KC_HOSTNAME_STRICT
           value: "false"
         - name: KC_HTTP_ENABLED
